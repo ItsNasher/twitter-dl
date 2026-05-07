@@ -1,0 +1,170 @@
+-<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>twdl — twitter video downloader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <!-- top bar -->
+  <nav class="navbar">
+    <div class="nav-inner">
+      <div class="nav-logo">
+        <div class="logo-mark">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="22" height="22" rx="5" fill="#4A8CF7"/>
+            <path d="M6 7L11 13L16 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M11 13V17" stroke="white" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span class="logo-text">twdl</span>
+        <span class="logo-badge">beta</span>
+      </div>
+      <div class="nav-links">
+        <a href="#" class="nav-link">docs</a>
+        <a href="#" class="nav-link">api</a>
+        <a href="https://github.com" class="nav-link nav-link-gh" target="_blank">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+          github
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- body -->
+  <main class="main-content">
+    <div class="main-content-inner">
+
+      <div class="main-content-tag">
+        <span class="tag-dot"></span>
+        <span>free · no account needed · open source</span>
+      </div>
+
+      <h1 class="main-content-title">
+        Twitter videos<br/>
+        <span class="title-accent">turned into MP4.</span>
+      </h1>
+
+      <p class="main-content-sub">
+        Including captions, comments and reposts.<br/>
+        Paste a link. Get your file. That's it.
+      </p>
+
+      <!-- URL input -->
+      <div class="input-wrapper">
+        <div class="input-bar" id="inputBar">
+          <div class="input-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+            </svg>
+          </div>
+          <input
+            type="text"
+            id="twitterUrl"
+            class="url-input"
+            placeholder="https://x.com/username/status/..."
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button class="fetch-btn" id="fetchBtn" onclick="handleFetch()">
+            <span class="btn-label">fetch</span>
+            <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+        <p class="input-hint">supports x.com and twitter.com links</p>
+      </div>
+
+      <!-- results card (hidden by default) -->
+      <div class="result-card" id="resultCard" style="display:none;">
+        <div class="result-header">
+          <div class="result-thumb">
+            <div class="thumb-placeholder">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            </div>
+          </div>
+          <div class="result-meta">
+            <p class="result-author" id="resultAuthor">@username</p>
+            <p class="result-date" id="resultDate">—</p>
+            <p class="result-text" id="resultText">Tweet text will appear here...</p>
+          </div>
+        </div>
+
+        <div class="result-divider"></div>
+
+        <div class="result-options">
+          <div class="options-label">quality</div>
+          <div class="quality-pills" id="qualityPills">
+            <button class="quality-pill active">1080p</button>
+            <button class="quality-pill">720p</button>
+            <button class="quality-pill">480p</button>
+          </div>
+        </div>
+
+        <div class="result-actions">
+          <button class="dl-btn dl-primary" onclick="handleDownload('video')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            download mp4
+          </button>
+          <button class="dl-btn dl-secondary" onclick="handleDownload('captions')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
+            captions (.srt)
+          </button>
+          <button class="dl-btn dl-secondary" onclick="handleDownload('audio')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            audio only
+          </button>
+        </div>
+      </div>
+
+      <!-- loading state -->
+      <div class="loading-state" id="loadingState" style="display:none;">
+        <div class="loading-bars">
+          <span></span><span></span><span></span><span></span>
+        </div>
+        <p class="loading-text" id="loadingText">fetching tweet data...</p>
+      </div>
+
+      <!-- error state -->
+      <div class="error-state" id="errorState" style="display:none;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p id="errorText">something went wrong. try again.</p>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="stat-item">
+        <span class="stat-num">0</span>
+        <span class="stat-label">videos downloaded</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-num">rust</span>
+        <span class="stat-label">backend</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-num">open</span>
+        <span class="stat-label">source</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script src="js/downloader.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
