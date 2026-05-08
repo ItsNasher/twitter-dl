@@ -1,4 +1,4 @@
-# twitter-dl
+# twitter-dl — Agent Guide
 
 ## Project Overview
 A Twitter/X video downloader with a plain HTML/CSS/JS frontend and a Rust (Axum) backend.
@@ -26,7 +26,7 @@ twitter-dl/
 │   ├── services/         # Business logic (twitter API, video, captions)
 │   └── models/           # Serde structs
 ├── Cargo.toml
-├── .env                  # TWITTER_BEARER_TOKEN, HOST, PORT
+├── .env                  # HOST, PORT
 └── AGENTS.md
 ```
 
@@ -59,7 +59,7 @@ The frontend (js/api.js) expects the backend running at `http://localhost:3000/a
 
 ### Backend
 ```bash
-cp .env.example .env       # add your TWITTER_BEARER_TOKEN
+cp .env.example .env       # (optional — defaults are 127.0.0.1:3000)
 cargo run                  # starts on localhost:3000
 ```
 
@@ -92,10 +92,39 @@ npx serve frontend         # or open frontend/index.html directly in browser
 
 ## Environment Variables
 ```
-TWITTER_BEARER_TOKEN=   # required — Twitter API v2 Bearer token
 HOST=127.0.0.1          # optional, default 127.0.0.1
 PORT=3000               # optional, default 3000
 ```
+
+## Deployment
+
+### Backend Hosting
+
+The Rust backend runs as a single binary — no Node.js runtime needed. Good options:
+
+| Platform | Pros | Cons |
+|----------|------|------|
+| **[Railway](https://railway.app)** | Rust builder built-in, free tier, git push deploy, env var management, custom domains | No SSH access |
+| **[Fly.io](https://fly.io)** | Global edge regions, free tier, Dockerfile or Rust builder, WireGuard tunnel | Slightly steeper config |
+| **[Shuttle.rs](https://shuttle.rs)** | Made for Rust, one-command deploy (`cargo shuttle deploy`), free tier, integrates with Axum natively | Less portable, vendor lock-in |
+
+**All three** give you a public URL, handle TLS/SSL, and let you set env vars (like `HOST`, `PORT`). For a personal tool, Railway is the sweet spot — minimal config, Rust detected automatically.
+
+### Database (for download counters, etc.)
+
+| Platform | Pros | Cons |
+|----------|------|------|
+| **[Supabase](https://supabase.com)** (PostgreSQL) | Free tier, great Rust support via `sqlx`, hosted, dashboard UI | Overkill if you only need a counter |
+| **SQLite on disk** | Zero infra, embedded, survives restarts | Doesn't scale across multiple instances |
+| **In-memory (`AtomicU64`)** | Simplest, no deps | Resets on restart |
+
+**Recommendation:** Start with in-memory or SQLite. Add Supabase only if you actually need global persistence.
+
+### Frontend Deployment
+Since the frontend is vanilla HTML/CSS/JS with no build step, you can host it anywhere:
+- **Vercel** / **Netlify** — free, point at the `frontend/` folder
+- **GitHub Pages** — also free
+- **Same Railway service** — just add the frontend files to the backend's binary or serve them as static assets
 
 ## Rust Compiler Warnings (to fix)
 
