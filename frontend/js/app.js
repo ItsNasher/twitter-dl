@@ -57,7 +57,8 @@ function loadVideoPreview() {
   player.style.display  = "none";
   overlay.style.display = "flex";
 
-  player.src = variant.url;
+  const proxyUrl = `http://localhost:3000/api/preview?url=${encodeURIComponent(variant.url)}`;
+  player.src = proxyUrl;
 
   player.oncanplay = () => {
     overlay.style.display = "none";
@@ -106,7 +107,7 @@ function renderResult(data) {
   document.getElementById("captionAuthor").textContent = `@${data.author || "unknown"}`;
   document.getElementById("captionText").textContent   = data.text || "";
 
-  document.getElementById("optCaptions").checked      = false;
+  document.getElementById("optCaptions").checked        = false;
   document.getElementById("videoCaption").style.display = "none";
 
   const hasQuote = !!data.quoted_tweet;
@@ -130,6 +131,7 @@ function renderResult(data) {
   }
 }
 
+// helpers
 function incrementStat(id) {
   const el = document.getElementById(id);
   if (el) el.textContent = (parseInt(el.textContent) || 0) + 1;

@@ -6,7 +6,7 @@ mod services;
 use std::net::SocketAddr;
 
 use axum::{
-    routing::post,
+    routing::{get, post},
     Router,
 };
 use dotenvy::dotenv;
@@ -50,6 +50,7 @@ async fn main() {
         .route("/api/download", post(routes::download::handler))
         .route("/api/captions", post(routes::captions::handler))
         .route("/api/audio",    post(routes::audio::handler))
+        .route("/api/preview",  get(routes::preview::handler))  // <-- new
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
