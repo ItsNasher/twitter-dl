@@ -1,0 +1,8 @@
+/target
+.env
+Cargo.lock
+*.mp4
+*.m4a
+*.srt
+*.vtt
+AGENTS.md
