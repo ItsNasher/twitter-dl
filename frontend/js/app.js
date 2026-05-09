@@ -16,7 +16,8 @@ document.getElementById("twitterUrl").addEventListener("keydown", (e) => {
 
 document.getElementById("optCaptions").addEventListener("change", () => {
   const on = document.getElementById("optCaptions").checked;
-  document.getElementById("videoCaption").style.display = on ? "flex" : "none";
+  document.getElementById("videoThumbArea").style.display = on ? "none" : "block";
+  document.getElementById("tweetCard").classList.toggle("visible", on);
 });
 
 async function handleFetch() {
@@ -46,8 +47,10 @@ async function handleFetch() {
 function loadVideoPreview() {
   if (!currentTweetData) return;
 
-  const player  = document.getElementById("videoPlayer");
-  const overlay = document.getElementById("videoLoadingOverlay");
+  const player    = document.getElementById("videoPlayer");
+  const overlay   = document.getElementById("videoLoadingOverlay");
+  const cardPlayer  = document.getElementById("tweetCardPlayer");
+  const cardOverlay = document.getElementById("tweetCardLoadingOverlay");
 
   const variant = currentTweetData.variants.find(v => v.label === selectedQuality)
     || currentTweetData.variants[0];
@@ -56,20 +59,27 @@ function loadVideoPreview() {
 
   player.style.display  = "none";
   overlay.style.display = "flex";
+  cardOverlay.style.display = "flex";
 
   const proxyUrl = `http://localhost:3000/api/preview?url=${encodeURIComponent(variant.url)}`;
-  player.src = proxyUrl;
+  player.src  = proxyUrl;
+  cardPlayer.src = proxyUrl;
 
   player.oncanplay = () => {
     overlay.style.display = "none";
     player.style.display  = "block";
   };
-
   player.onerror = () => {
     overlay.innerHTML = `<p class="loading-text" style="color:var(--error)">preview unavailable — use download below</p>`;
   };
 
+  cardPlayer.oncanplay = () => { cardOverlay.style.display = "none"; };
+  cardPlayer.onerror   = () => {
+    cardOverlay.innerHTML = `<p class="loading-text" style="color:var(--error)">preview unavailable</p>`;
+  };
+
   player.load();
+  cardPlayer.load();
 }
 
 async function handleDownload() {
@@ -104,11 +114,16 @@ function renderResult(data) {
   document.getElementById("videoDate").textContent   = data.created_at || "—";
   document.getElementById("videoText").textContent   = data.text || "";
 
-  document.getElementById("captionAuthor").textContent = `@${data.author || "unknown"}`;
-  document.getElementById("captionText").textContent   = data.text || "";
+  document.getElementById("tweetCardName").textContent    = data.author || "unknown";
+  document.getElementById("tweetCardHandle").textContent  = `@${data.author || "unknown"}`;
+  document.getElementById("tweetCardText").textContent    = data.text || "";
+  document.getElementById("tweetCardTime").textContent    = data.created_at || "—";
+  const letter = (data.author || "?")[0].toUpperCase();
+  document.getElementById("tweetCardAvatar").textContent  = letter;
 
-  document.getElementById("optCaptions").checked        = false;
-  document.getElementById("videoCaption").style.display = "none";
+  document.getElementById("optCaptions").checked          = false;
+  document.getElementById("videoThumbArea").style.display = "block";
+  document.getElementById("tweetCard").classList.remove("visible");
 
   const hasQuote = !!data.quoted_tweet;
   const hasReply = !!data.in_reply_to;

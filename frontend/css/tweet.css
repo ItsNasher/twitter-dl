@@ -1,0 +1,155 @@
+/* tweet caption */
+
+.tweet-card {
+  display: none;
+  flex-direction: column;
+  width: 100%;
+  background: #000;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.tweet-card.visible {
+  display: flex;
+}
+
+.tweet-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 10px;
+  background: #000;
+}
+
+.tweet-card-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #1a1a1a;
+}
+
+.tweet-card-avatar-placeholder {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #1d2230;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4A8CF7;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tweet-card-names {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tweet-card-name {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tweet-card-verified {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.tweet-card-verified svg {
+  width: 16px;
+  height: 16px;
+  fill: #1D9BF0;
+}
+
+.tweet-card-handle {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: #71767B;
+}
+
+.tweet-card-x {
+  flex-shrink: 0;
+  color: #fff;
+  opacity: 0.7;
+}
+
+.tweet-card-body {
+  padding: 0 16px 12px;
+  background: #000;
+}
+
+.tweet-card-text {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 400;
+  color: #fff;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.tweet-card-video-wrap {
+  width: 100%;
+  position: relative;
+  background: #000;
+  line-height: 0;
+}
+
+.tweet-card-video-wrap video {
+  width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+
+.tweet-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 14px;
+  background: #000;
+  border-top: 1px solid #2f3336;
+}
+
+.tweet-card-footer-time {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: #71767B;
+}
+
+.tweet-card-footer-dot {
+  color: #71767B;
+  font-size: 13px;
+}
+
+.tweet-card-footer-views {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: #71767B;
+}
+
+.tweet-card-footer-views strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.tweet-card-video-wrap .video-loading-overlay {
+  position: absolute;
+  inset: 0;
+  min-height: 180px;
+}
