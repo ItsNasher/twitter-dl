@@ -15,6 +15,8 @@ pub struct TweetInfo {
     pub quoted_tweet: Option<TweetRef>,
     pub in_reply_to: Option<TweetRef>,
     pub variants: Vec<VideoVariant>,
+    pub avatar_url: Option<String>,
+    pub likes: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +39,8 @@ pub struct SyndicationTweet {
     pub in_reply_to_screen_name: Option<String>,
     #[serde(rename = "in_reply_to_status_id_str")]
     pub in_reply_to_status_id_str: Option<String>,
+    #[serde(default, alias = "favorite_count")]
+    pub likes: Option<u64>,
 }
 
 impl SyndicationTweet {
@@ -71,6 +75,8 @@ pub type ExtendedEntities = MediaEntities;
 #[derive(Debug, Deserialize, Default)]
 pub struct SyndicationUser {
     pub screen_name: String,
+    #[serde(default)]
+    pub profile_image_url_https: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

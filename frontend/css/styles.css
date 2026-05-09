@@ -507,9 +507,9 @@ a { color: inherit; text-decoration: none; }
   background: #0E1014;
   min-height: 220px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
   position: relative;
+  overflow: hidden;
 }
 
 .video-play-icon {
@@ -726,24 +726,8 @@ a { color: inherit; text-decoration: none; }
 
 .dl-full { width: 100%; }
 
-.dl-row { display: flex; gap: 8px; }
-
-.dl-half { flex: 1; font-size: 12px; }
-
 .dl-primary { background: var(--accent); color: white; }
 .dl-primary:hover { background: var(--accent-hover); }
-
-.dl-secondary {
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-}
-
-.dl-secondary:hover {
-  border-color: var(--border-strong);
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
 
 .dl-btn:active { transform: scale(0.97); }
 

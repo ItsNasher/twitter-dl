@@ -174,6 +174,8 @@ pub async fn build_tweet_info(
         quoted_tweet,
         in_reply_to,
         variants,
+        avatar_url: tweet.user.profile_image_url_https.clone(),
+        likes: tweet.likes,
     })
 }
 

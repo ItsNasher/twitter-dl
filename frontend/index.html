@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>twdl — twitter video downloader</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css"/>
-  <link rel="stylesheet" href="css/tweet.css"/>
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/tweet.css" />
 </head>
 <body>
 
@@ -98,7 +98,7 @@
   <section class="result-section" id="resultSection">
     <div class="result-section-inner">
 
-      <!-- left -->
+      <!-- left: video panel -->
       <div class="result-panel result-panel-video">
 
         <div class="panel-empty" id="panelEmpty">
@@ -113,7 +113,8 @@
         </div>
 
         <div class="panel-loaded" id="panelLoaded" style="display:none;">
-        <!-- video player -->
+
+          <!-- DEFAULT MODE: plain video player -->
           <div class="video-thumb-area" id="videoThumbArea">
             <div class="video-loading-overlay" id="videoLoadingOverlay">
               <div class="loading-bars"><span></span><span></span><span></span><span></span></div>
@@ -122,51 +123,54 @@
             <video id="videoPlayer" class="video-player" controls playsinline></video>
           </div>
 
-          <!-- tweet card -->
+          <!-- CAPTION MODE: full tweet card (hidden by default) -->
           <div class="tweet-card" id="tweetCard">
+
             <div class="tweet-card-header">
+              <img class="tweet-card-avatar" id="tweetCardAvatarImg" style="display:none" alt="" />
               <div class="tweet-card-avatar-placeholder" id="tweetCardAvatar">?</div>
               <div class="tweet-card-names">
                 <span class="tweet-card-name">
                   <span id="tweetCardName">Display Name</span>
                   <span class="tweet-card-verified">
-                    <svg viewBox="0 0 24 24" aria-label="Verified account">
+                    <svg viewBox="0 0 24 24" aria-label="Verified">
                       <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.267.138-1.9-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.132-1.29-.084-1.9.138-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.9-.14-.633.131-1.218.437-1.687.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.9-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.61-.274 1.267-.144 1.9.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.9-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567.539-.355.970-.854 1.245-1.44.61.22 1.267.268 1.9.136.633-.131 1.218-.435 1.687-.878.445-.47.749-1.054.878-1.687.13-.633.08-1.29-.144-1.9.587-.274 1.087-.705 1.443-1.246.354-.54.553-1.17.57-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-5.794 1.427 1.084-5.763 7.368z"/>
                     </svg>
                   </span>
                 </span>
                 <span class="tweet-card-handle" id="tweetCardHandle">@handle</span>
               </div>
-        
               <div class="tweet-card-x">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
                 </svg>
               </div>
             </div>
-        
+
             <div class="tweet-card-body">
               <p class="tweet-card-text" id="tweetCardText"></p>
             </div>
-        
-            <div class="tweet-card-video-wrap" id="tweetCardVideoWrap">
+
+            <div class="tweet-card-video-wrap">
               <div class="video-loading-overlay" id="tweetCardLoadingOverlay">
                 <div class="loading-bars"><span></span><span></span><span></span><span></span></div>
                 <p class="loading-text">loading preview...</p>
               </div>
               <video id="tweetCardPlayer" controls playsinline></video>
             </div>
-        
+
             <div class="tweet-card-footer">
               <span class="tweet-card-footer-time" id="tweetCardTime">—</span>
-              <span class="tweet-card-footer-dot">·</span>
-              <span class="tweet-card-footer-views">
-                <strong id="tweetCardViews">—</strong> Views
+              <span class="tweet-card-footer-sep">·</span>
+              <span class="tweet-card-footer-likes">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                <span id="tweetCardLikes">—</span>
               </span>
             </div>
-        
+
           </div>
-        
+
+          <!-- meta + quality always visible below whichever view is active -->
           <div class="video-meta-area">
             <div class="video-meta-top">
               <span class="video-author" id="videoAuthor">@username</span>
@@ -174,18 +178,18 @@
             </div>
             <p class="video-text" id="videoText">Tweet text will appear here.</p>
           </div>
-        
+
           <div class="quality-row">
             <span class="quality-row-label">quality</span>
             <div class="quality-pills" id="qualityPills">
               <button class="quality-pill active">720p</button>
             </div>
           </div>
-        
+
         </div>
       </div>
 
-      <!-- right -->
+      <!-- right: options panel -->
       <div class="result-panel result-panel-options">
 
         <div class="options-header">
@@ -194,6 +198,21 @@
         </div>
 
         <div class="options-group">
+
+          <label class="option-row">
+            <div class="option-check-wrap">
+              <input type="checkbox" id="optCaptions" class="option-check" />
+              <span class="option-custom-check">
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 6 5 9 10 3"/></svg>
+              </span>
+            </div>
+            <div class="option-text">
+              <span class="option-label">show captions</span>
+              <span class="option-desc">preview as a full tweet card with author and text</span>
+            </div>
+          </label>
+
+          <div class="option-divider"></div>
 
           <label class="option-row" id="optQuotedRow">
             <div class="option-check-wrap">
@@ -223,21 +242,6 @@
               <span class="option-desc">prepend the tweet this is replying to</span>
             </div>
             <span class="option-badge" id="badgeReply" style="display:none;">detected</span>
-          </label>
-
-          <div class="option-divider"></div>
-
-          <label class="option-row">
-            <div class="option-check-wrap">
-              <input type="checkbox" id="optCaptions" class="option-check" />
-              <span class="option-custom-check">
-                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 6 5 9 10 3"/></svg>
-              </span>
-            </div>
-            <div class="option-text">
-              <span class="option-label">show captions</span>
-              <span class="option-desc">overlay tweet text on the video preview</span>
-            </div>
           </label>
 
         </div>

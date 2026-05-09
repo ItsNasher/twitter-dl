@@ -1,6 +1,7 @@
 let currentTweetData = null;
 let selectedQuality  = "720p";
 
+// ── quality pill clicks ────────────────────────────────────────────────────
 document.getElementById("qualityPills").addEventListener("click", (e) => {
   const pill = e.target.closest(".quality-pill");
   if (!pill) return;
@@ -10,16 +11,40 @@ document.getElementById("qualityPills").addEventListener("click", (e) => {
   if (currentTweetData) loadVideoPreview();
 });
 
+// ── enter key ─────────────────────────────────────────────────────────────
 document.getElementById("twitterUrl").addEventListener("keydown", (e) => {
   if (e.key === "Enter") handleFetch();
 });
 
+// ── captions toggle: swap between plain player and tweet card ─────────────
 document.getElementById("optCaptions").addEventListener("change", () => {
-  const on = document.getElementById("optCaptions").checked;
-  document.getElementById("videoThumbArea").style.display = on ? "none" : "block";
-  document.getElementById("tweetCard").classList.toggle("visible", on);
+  setCaptionMode(document.getElementById("optCaptions").checked);
 });
 
+function setCaptionMode(on) {
+  const thumbArea = document.getElementById("videoThumbArea");
+  const tweetCard = document.getElementById("tweetCard");
+  const player    = document.getElementById("videoPlayer");
+  const cardPlayer = document.getElementById("tweetCardPlayer");
+
+  if (on) {
+    thumbArea.style.display = "none";
+    tweetCard.classList.add("visible");
+    // sync playback position
+    const t = player.currentTime;
+    cardPlayer.currentTime = t;
+    if (!player.paused) cardPlayer.play();
+  } else {
+    tweetCard.classList.remove("visible");
+    thumbArea.style.display = "flex";
+    // sync back
+    const t = cardPlayer.currentTime;
+    player.currentTime = t;
+    if (!cardPlayer.paused) player.play();
+  }
+}
+
+// ── fetch ──────────────────────────────────────────────────────────────────
 async function handleFetch() {
   const url = document.getElementById("twitterUrl").value.trim();
   if (!url) return shakeInput();
@@ -44,27 +69,22 @@ async function handleFetch() {
   }
 }
 
+// ── load video into both players via proxy ─────────────────────────────────
 function loadVideoPreview() {
   if (!currentTweetData) return;
 
-  const player    = document.getElementById("videoPlayer");
-  const overlay   = document.getElementById("videoLoadingOverlay");
-  const cardPlayer  = document.getElementById("tweetCardPlayer");
-  const cardOverlay = document.getElementById("tweetCardLoadingOverlay");
-
   const variant = currentTweetData.variants.find(v => v.label === selectedQuality)
     || currentTweetData.variants[0];
-
   if (!variant) return;
 
+  const proxyUrl = `http://localhost:3000/api/preview?url=${encodeURIComponent(variant.url)}`;
+
+  // plain player
+  const player  = document.getElementById("videoPlayer");
+  const overlay = document.getElementById("videoLoadingOverlay");
   player.style.display  = "none";
   overlay.style.display = "flex";
-  cardOverlay.style.display = "flex";
-
-  const proxyUrl = `http://localhost:3000/api/preview?url=${encodeURIComponent(variant.url)}`;
-  player.src  = proxyUrl;
-  cardPlayer.src = proxyUrl;
-
+  player.src = proxyUrl;
   player.oncanplay = () => {
     overlay.style.display = "none";
     player.style.display  = "block";
@@ -72,16 +92,25 @@ function loadVideoPreview() {
   player.onerror = () => {
     overlay.innerHTML = `<p class="loading-text" style="color:var(--error)">preview unavailable — use download below</p>`;
   };
+  player.load();
 
-  cardPlayer.oncanplay = () => { cardOverlay.style.display = "none"; };
-  cardPlayer.onerror   = () => {
+  // tweet card player
+  const cardPlayer  = document.getElementById("tweetCardPlayer");
+  const cardOverlay = document.getElementById("tweetCardLoadingOverlay");
+  cardPlayer.style.display  = "none";
+  cardOverlay.style.display = "flex";
+  cardPlayer.src = proxyUrl;
+  cardPlayer.oncanplay = () => {
+    cardOverlay.style.display = "none";
+    cardPlayer.style.display  = "block";
+  };
+  cardPlayer.onerror = () => {
     cardOverlay.innerHTML = `<p class="loading-text" style="color:var(--error)">preview unavailable</p>`;
   };
-
-  player.load();
   cardPlayer.load();
 }
 
+// ── download ───────────────────────────────────────────────────────────────
 async function handleDownload() {
   if (!currentTweetData) return;
 
@@ -106,24 +135,41 @@ async function handleDownload() {
   }
 }
 
+// ── render result ──────────────────────────────────────────────────────────
 function renderResult(data) {
   document.getElementById("panelEmpty").style.display  = "none";
   document.getElementById("panelLoaded").style.display = "flex";
 
+  const cleanText = (data.text || "").replace(/\s*https:\/\/t\.co\/\S+/g, "").trim();
+
+  // plain meta strip
   document.getElementById("videoAuthor").textContent = `@${data.author || "unknown"}`;
   document.getElementById("videoDate").textContent   = data.created_at || "—";
-  document.getElementById("videoText").textContent   = data.text || "";
+  document.getElementById("videoText").textContent   = cleanText;
 
+  // tweet card fields
+  const placeholder = document.getElementById("tweetCardAvatar");
+  const img         = document.getElementById("tweetCardAvatarImg");
+  if (data.avatar_url) {
+    placeholder.style.display = "none";
+    img.src = data.avatar_url;
+    img.style.display = "block";
+  } else {
+    const initial = (data.author || "?")[0].toUpperCase();
+    placeholder.textContent = initial;
+    placeholder.style.display = "flex";
+    img.style.display = "none";
+  }
+  // use author as display name since syndication API doesn't return display name separately
   document.getElementById("tweetCardName").textContent    = data.author || "unknown";
   document.getElementById("tweetCardHandle").textContent  = `@${data.author || "unknown"}`;
-  document.getElementById("tweetCardText").textContent    = data.text || "";
+  document.getElementById("tweetCardText").textContent    = cleanText;
   document.getElementById("tweetCardTime").textContent    = data.created_at || "—";
-  const letter = (data.author || "?")[0].toUpperCase();
-  document.getElementById("tweetCardAvatar").textContent  = letter;
+  document.getElementById("tweetCardLikes").textContent   = data.likes != null ? Number(data.likes).toLocaleString() : "—";
 
-  document.getElementById("optCaptions").checked          = false;
-  document.getElementById("videoThumbArea").style.display = "block";
-  document.getElementById("tweetCard").classList.remove("visible");
+  // reset caption mode to off
+  document.getElementById("optCaptions").checked = false;
+  setCaptionMode(false);
 
   const hasQuote = !!data.quoted_tweet;
   const hasReply = !!data.in_reply_to;
@@ -146,7 +192,7 @@ function renderResult(data) {
   }
 }
 
-// helpers
+// ── helpers ────────────────────────────────────────────────────────────────
 function incrementStat(id) {
   const el = document.getElementById(id);
   if (el) el.textContent = (parseInt(el.textContent) || 0) + 1;
