@@ -6,6 +6,8 @@ use axum::{
 };
 use serde::Deserialize;
 
+use regex::Regex;
+
 use crate::{error::AppError, AppState};
 
 #[derive(Deserialize)]
@@ -17,7 +19,13 @@ pub async fn handler(
     State(state): State<AppState>,
     Query(params): Query<PreviewQuery>,
 ) -> Result<Response, AppError> {
-    if !params.url.starts_with("https://video.twimg.com/") {
+    if !state.rate_limiter.check("/api/preview", 30, 60) {
+        return Err(AppError::RateLimited);
+    }
+
+    let re = Regex::new(r"^https://video\.twimg\.com/.+\.mp4(\?.*)?$")
+        .expect("valid regex");
+    if !re.is_match(&params.url) {
         return Err(AppError::InvalidUrl);
     }
 

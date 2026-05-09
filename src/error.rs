@@ -29,6 +29,9 @@ pub enum AppError {
     #[error("Network error: {0}")]
     Network(#[from] reqwest::Error),
 
+    #[error("Rate limited. Try again later.")]
+    RateLimited,
+
     #[error("Internal error: {0}")]
     Internal(#[from] anyhow::Error),
 }
@@ -43,6 +46,7 @@ impl IntoResponse for AppError {
             AppError::TwitterApi(_)  => (StatusCode::BAD_GATEWAY, self.to_string()),
             AppError::Ffmpeg(_)      => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             AppError::Network(_)     => (StatusCode::BAD_GATEWAY, self.to_string()),
+            AppError::RateLimited   => (StatusCode::TOO_MANY_REQUESTS, self.to_string()),
             AppError::Internal(_)    => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 

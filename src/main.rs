@@ -3,9 +3,13 @@ mod models;
 mod routes;
 mod services;
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use axum::{
+    http::header::HeaderValue,
     routing::{get, post},
     Router,
 };
@@ -16,8 +20,35 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Clone)]
+pub struct RateLimiter {
+    inner: Arc<Mutex<HashMap<String, Vec<Instant>>>>,
+}
+
+impl RateLimiter {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn check(&self, key: &str, max_requests: usize, window_secs: u64) -> bool {
+        let now = Instant::now();
+        let window = std::time::Duration::from_secs(window_secs);
+        let mut map = self.inner.lock().unwrap();
+        let entries = map.entry(key.to_string()).or_default();
+        entries.retain(|t| now.duration_since(*t) < window);
+        if entries.len() >= max_requests {
+            return false;
+        }
+        entries.push(now);
+        true
+    }
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub client: Client,
+    pub rate_limiter: RateLimiter,
 }
 
 #[tokio::main]
@@ -38,19 +69,29 @@ async fn main() {
         .build()
         .expect("failed to build reqwest client");
 
-    let state = AppState { client };
+    let state = AppState {
+        client,
+        rate_limiter: RateLimiter::new(),
+    };
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    let cors = if let Ok(origin) = std::env::var("CORS_ORIGIN") {
+        CorsLayer::new()
+            .allow_origin(origin.parse::<HeaderValue>().expect("invalid CORS_ORIGIN"))
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    };
 
     let app = Router::new()
-        .route("/api/info",     post(routes::info::handler))
+        .route("/api/info", post(routes::info::handler))
         .route("/api/download", post(routes::download::handler))
         .route("/api/captions", post(routes::captions::handler))
-        .route("/api/audio",    post(routes::audio::handler))
-        .route("/api/preview",  get(routes::preview::handler))  // <-- new
+        .route("/api/audio", post(routes::audio::handler))
+        .route("/api/preview", get(routes::preview::handler)) // <-- new
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -71,7 +112,5 @@ async fn main() {
         .await
         .expect("failed to bind");
 
-    axum::serve(listener, app)
-        .await
-        .expect("server failed");
+    axum::serve(listener, app).await.expect("server failed");
 }
