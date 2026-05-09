@@ -754,7 +754,7 @@ a { color: inherit; text-decoration: none; }
   .stat-label { font-size: 10px; }
   .result-section { padding: 32px 16px 48px; }
 }
-/* ── VIDEO PLAYER ─────────────────────────────────────────────────────────── */
+/* video player */
 .video-thumb-area {
   flex: 1;
   background: #0A0C0F;
@@ -817,4 +817,15 @@ a { color: inherit; text-decoration: none; }
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* disabled options */
+.option-row-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+ 
+.option-row-disabled .option-label {
+  color: var(--text-muted);
 }
