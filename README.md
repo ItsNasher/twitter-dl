@@ -13,20 +13,40 @@ Users paste a tweet URL and can download the video as MP4, captions as SRT, or a
 ```
 twitter-dl/
 ├── frontend/
-│   ├── index.html
-│   ├── css/styles.css
-│   └── js/
-│       ├── app.js        # UI state, event handlers, validation
-│       ├── api.js        # fetch() calls to Rust backend
-│       └── downloader.js # blob download helpers
+│   ├── css/
+│   │   ├── styles.css    # Design tokens, layout, dark theme
+│   │   └── tweet.css     # Tweet card, captions mode styles
+│   ├── js/
+│   │   ├── api.js        # fetch() calls to Rust backend
+│   │   ├── app.js        # UI state, event handlers, validation
+│   │   └── downloader.js # blob download helpers
+│   └── index.html
 ├── src/
-│   ├── main.rs           # Axum server entry, router
+│   ├── main.rs           # Axum server entry, router, rate limiter
 │   ├── error.rs          # AppError type
-│   ├── routes/           # One file per endpoint
-│   ├── services/         # Business logic (twitter API, video, captions)
-│   └── models/           # Serde structs
-├── Cargo.toml
+│   ├── models/
+│   │   ├── mod.rs
+│   │   ├── tweet.rs      # Syndication API response structs
+│   │   └── video_variant.rs
+│   ├── routes/
+│   │   ├── mod.rs
+│   │   ├── audio.rs      # POST /api/audio
+│   │   ├── captions.rs   # POST /api/captions
+│   │   ├── download.rs   # POST /api/download
+│   │   ├── info.rs       # POST /api/info
+│   │   └── preview.rs    # GET /api/preview (video proxy)
+│   └── services/
+│       ├── mod.rs
+│       ├── captions.rs   # VTT→SRT conversion
+│       ├── download.rs   # MP4/SRT merging helpers
+│       ├── twitter.rs    # Guest token, syndication API calls
+│       └── video.rs      # HLS segment merging, ffmpeg remux
 ├── .env                  # HOST, PORT
+├── .env.example
+├── .gitignore
+├── Cargo.lock
+├── Cargo.toml
+├── README.md
 └── AGENTS.md
 ```
 
@@ -51,7 +71,9 @@ The frontend (js/api.js) expects the backend running at `http://localhost:3000/a
   "variants": [
     { "label": "1080p", "url": "...", "bitrate": 2176000 },
     { "label": "720p",  "url": "...", "bitrate": 832000  }
-  ]
+  ],
+  "avatar_url": null | "https://pbs.twimg.com/profile_images/..._normal.jpg",
+  "likes": null | 1234
 }
 ```
 
@@ -94,6 +116,7 @@ npx serve frontend         # or open frontend/index.html directly in browser
 ```
 HOST=127.0.0.1          # optional, default 127.0.0.1
 PORT=3000               # optional, default 3000
+CORS_ORIGIN             # optional, restricts CORS in production (omit for dev = AllowOrigin(Any))
 ```
 
 ## Deployment
@@ -138,34 +161,54 @@ Run `cargo check` to see these:
    - `pub media: Vec<serde_json::Value>` on `EntityBlock` — can remove
 4. **`ExtendedEntities` type alias never used** — `src/models/tweet.rs:69`
    - `pub type ExtendedEntities = MediaEntities;` — can remove
-5. **`include_quote` and `include_reply` never read** — `src/models/tweet.rs:121,123`
-   - Fields on `DownloadRequest` — the routes accept them but don't use them yet (the backend always downloads the main tweet video). Remove or implement.
+5. ~~**`include_quote` and `include_reply` never read**~~ — `src/models/tweet.rs:121,123` **(FIXED)**
+   - Fields on `DownloadRequest` — now implemented in all three routes (download, audio, captions)
 6. **`quality` field on `DownloadRequest`** — used in download/audio routes but the captions endpoint also accepts `DownloadRequest` (which includes `quality`) without using it. Either split into separate request types or suppress.
 
 ## Known Issues & What's Not Built Yet
-
-### ❌ Video preview unavailable (CORS)
-The preview in `frontend/js/app.js:60` sets `<video>.src` to Twitter's CDN URL directly. Browsers block this cross-origin (no `Access-Control-Allow-Origin` header), so `onerror` fires at line 68 showing "preview unavailable."
-
-**Fix — Option A: Proxy endpoint (full video preview)**
-- Add `GET /api/preview?url=<encoded_twitter_cdn_url>` that proxies the video bytes server-side through the shared `reqwest::Client`
-- In `loadVideoPreview()`, set `player.src = "http://localhost:3000/api/preview?url=" + encodeURIComponent(variant.url)`
-- New file: `src/routes/preview.rs` (stream bytes, set `content-type: video/mp4` + `access-control-allow-origin: *`)
-- Wire in `main.rs` router
-
-**Fix — Option B: Thumbnail poster (static image, simpler)**
-- Add `media_url_https: Option<String>` to `MediaItem` in `src/models/tweet.rs:77`
-- Add `thumbnail_url: Option<String>` to `TweetInfo` in `src/models/tweet.rs:11`
-- Populate in `build_tweet_info()` in `src/services/twitter.rs`
-- Set `player.poster = currentTweetData.thumbnail_url` in `loadVideoPreview()`
-
-### ❌ API contract mismatch in AGENTS.md
-The `TweetInfo` response has `quoted_tweet` and `in_reply_to` (objects with `author`/`text`), NOT `is_quote`/`is_reply` booleans. The JSON example in this file is correct; the old `is_quote`/`is_reply` fields were removed from the struct.
-
-### ❌ Download counter stuck at 0
-The `totalCount` stat never increments because no fetch is done server-side. The frontend runs `incrementStat("totalCount")` on download but there's no backend persistence.
 
 ### ✅ Done
 - Rust backend (`src/`) — all routes, services, models implemented
 - Caption format conversion (VTT → SRT) — `src/services/captions.rs` with tests
 - Download counter UI — frontend has `incrementStat()` and HTML counter elements
+- Video preview via proxy endpoint (`GET /api/preview`) — CORS-free MP4 playback, implemented in `src/routes/preview.rs`
+- Tweet card caption mode — "show captions" toggles a full X-style tweet card (avatar, name, handle, verified badge, tweet text, video, timestamp, likes) instead of plain text overlay
+- Profile picture (`avatar_url`) — `SyndicationUser.profile_image_url_https` parsed and exposed on `TweetInfo`
+- t.co links stripped from tweet text on the frontend in `renderResult()`
+- Likes count — heart icon + formatted count in tweet card footer
+- Tweet card video styling — rounded corners, border, centered in card, matches X/Twitter's inline look
+- Handle font fixed to sans-serif to match X/Twitter
+- **Disabled option rows** — quote/reply checkboxes greyed out (`option-row-disabled` class) when the tweet has no quoted/reply data, with `setOptionEnabled()` helper in `app.js`
+- **Lazy card player loading** — `loadCardPlayer()` called only when captions mode first opens; `cardPlayerReady` flag prevents redundant loads; proper pause/resume between plain player and card player
+- **Security — preview URL validation** — regex check in `preview.rs` ensures only `video.twimg.com` `.mp4` URLs are proxied
+- **Security — configurable CORS** — `CORS_ORIGIN` env var restricts origins in production; falls back to `Any` in dev
+- **Security — rate limiting** — `RateLimiter` struct in `main.rs` (30 req/min per key) applied to `/api/preview`; returns `429 TOO_MANY_REQUESTS`
+
+### ✅ In Progress
+
+### ✅ Quote/reply download merging
+✅ `include_quote` / `include_reply` flags trigger fetching the quoted/reply tweet's video in all three routes
+✅ Concat videos with ffmpeg via `merge_mp4s()` in `services/download.rs`
+✅ Merge SRT captions via `merge_srt_captions()` in `services/download.rs`
+✅ Text-only quoted tweets contribute nothing to output
+✅ Smart parent promotion: if a reply tweet's parent has video, parent becomes primary content
+✅ `fetch_quoted_tweet()` and `tweet_ref_from()` added to `services/twitter.rs`
+✅ `id_str` on `SyndicationQuotedTweet` added for full-quote fetching
+✅ `/api/info` now returns full `TweetRef` with variants for both quote and reply
+
+### ❌ Reply + quote tweet frontend design cleanup
+- Reply context moved below tweet card footer, polished inline (avatar + handle + text, no box/label)
+- Quote tweet still not rendered in captions mode — needs same treatment
+- Reply tweet card still needs styling polish (saving for tomorrow)
+
+### ❌ Download counter stuck at 0
+The `totalCount` stat never increments because no fetch is done server-side. The frontend runs `incrementStat("totalCount")` on download but there's no backend persistence.
+
+### ❌ Captions-baked video download (future)
+When captions mode is on and user hits download, the output MP4 should have the tweet card UI **rendered into the video frames** — not just raw video. This means using ffmpeg to composite:
+- Dark background bar with tweet card layout
+- Avatar image overlay
+- Drawtext for handle, tweet text, timestamp, likes
+- Verified badge SVG as image overlay
+
+This is NOT what the current `merge_mp4s` in `services/download.rs` does — that just concatenates raw videos. The compositing approach will need a dedicated function in `services/download.rs` (or a new module) using ffmpeg's `drawtext`, `overlay`, and `color` filterchain.
