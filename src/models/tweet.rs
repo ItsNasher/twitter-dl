@@ -5,6 +5,10 @@ use crate::models::VideoVariant;
 pub struct TweetRef {
     pub author: String,
     pub text: String,
+    pub avatar_url: Option<String>,
+    pub variants: Vec<VideoVariant>,
+    pub likes: Option<u64>,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -111,6 +115,8 @@ pub struct SyndicationQuotedTweet {
     pub user: SyndicationUser,
     #[serde(alias = "text", default)]
     pub full_text: String,
+    #[serde(rename = "id_str", default)]
+    pub id_str: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

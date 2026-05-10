@@ -9,10 +9,10 @@ use axum::{
 use crate::{
     error::AppError,
     models::DownloadRequest,
-    services::{
-        captions::fetch_and_convert_captions,
-        twitter::{extract_tweet_id, fetch_tweet, find_subtitle_url},
+    services::download::{
+        merge_srt_captions, original_reply_captions, promoted_captions, quoted_captions,
     },
+    services::twitter::{extract_tweet_id, fetch_tweet},
     AppState,
 };
 
@@ -23,11 +23,31 @@ pub async fn handler(
     let tweet_id = extract_tweet_id(&body.url)?;
     let tweet = fetch_tweet(&state.client, &tweet_id).await?;
 
-    let vtt_url = find_subtitle_url(&tweet).ok_or(AppError::NoCaptions)?;
+    let mut captions = Vec::new();
 
-    tracing::info!("Fetching captions for tweet {}", tweet_id);
+    match promoted_captions(&state.client, &tweet).await {
+        Ok(s) => captions.push(s),
+        Err(AppError::NoCaptions) => {}
+        Err(e) => return Err(e),
+    }
 
-    let srt_bytes = fetch_and_convert_captions(&state.client, &vtt_url).await?;
+    if body.include_quote {
+        if let Some(s) = quoted_captions(&state.client, &tweet).await? {
+            captions.push(s);
+        }
+    }
+
+    if body.include_reply {
+        if let Some(s) = original_reply_captions(&state.client, &tweet).await? {
+            captions.push(s);
+        }
+    }
+
+    if captions.is_empty() {
+        return Err(AppError::NoCaptions);
+    }
+
+    let srt = merge_srt_captions(captions);
 
     let filename = format!("{}_{}.srt", tweet.user.screen_name, tweet_id);
 
@@ -38,8 +58,8 @@ pub async fn handler(
             header::CONTENT_DISPOSITION,
             format!("attachment; filename=\"{}\"", filename),
         )
-        .header(header::CONTENT_LENGTH, srt_bytes.len())
-        .body(Body::from(srt_bytes))
+        .header(header::CONTENT_LENGTH, srt.len())
+        .body(Body::from(srt.into_bytes()))
         .map_err(|e| AppError::Internal(e.into()))?;
 
     Ok(response)

@@ -82,15 +82,46 @@ pub async fn fetch_tweet(client: &Client, tweet_id: &str) -> Result<SyndicationT
     Ok(tweet)
 }
 
+fn tweet_ref_from(tweet: &SyndicationTweet) -> TweetRef {
+    let variants = parse_variants(tweet).unwrap_or_default();
+    TweetRef {
+        author: tweet.user.screen_name.clone(),
+        text: tweet.full_text.clone(),
+        avatar_url: tweet.user.profile_image_url_https.clone(),
+        variants,
+        likes: tweet.likes,
+        created_at: format_date(&tweet.created_at),
+    }
+}
+
 pub async fn fetch_reply_parent(
     client: &Client,
     tweet: &SyndicationTweet,
 ) -> Option<TweetRef> {
     let id = tweet.in_reply_to_status_id_str.as_deref()?;
     let parent = fetch_tweet(client, id).await.ok()?;
+    Some(tweet_ref_from(&parent))
+}
+
+pub async fn fetch_quoted_tweet(
+    client: &Client,
+    tweet: &SyndicationTweet,
+) -> Option<TweetRef> {
+    let quoted = tweet.quoted_tweet.as_ref()?;
+
+    if let Some(id) = &quoted.id_str {
+        if let Ok(full) = fetch_tweet(client, id).await {
+            return Some(tweet_ref_from(&full));
+        }
+    }
+
     Some(TweetRef {
-        author: parent.user.screen_name,
-        text: parent.full_text,
+        author: quoted.user.screen_name.clone(),
+        text: quoted.full_text.clone(),
+        avatar_url: quoted.user.profile_image_url_https.clone(),
+        variants: vec![],
+        likes: None,
+        created_at: String::new(),
     })
 }
 
@@ -154,18 +185,39 @@ pub async fn build_tweet_info(
     client: &Client,
     tweet: &SyndicationTweet,
 ) -> Result<TweetInfo, AppError> {
-    let variants = parse_variants(tweet)?;
+    let variants = parse_variants(tweet).unwrap_or_default();
 
-    let quoted_tweet = tweet.quoted_tweet.as_ref().map(|q| TweetRef {
-        author: q.user.screen_name.clone(),
-        text: q.full_text.clone(),
-    });
+    let (in_reply_to, quoted_tweet) = tokio::join!(
+        fetch_reply_parent(client, tweet),
+        fetch_quoted_tweet(client, tweet),
+    );
 
-    let in_reply_to = if tweet.in_reply_to_status_id_str.is_some() {
-        fetch_reply_parent(client, tweet).await
-    } else {
-        None
-    };
+    // If the tweet is a reply and the parent has video, promote the parent
+    // as the primary content and move the original reply into in_reply_to.
+    if tweet.in_reply_to_status_id_str.is_some() {
+        if let Some(ref parent) = in_reply_to {
+            if !parent.variants.is_empty() {
+                let reply_data = TweetRef {
+                    author: tweet.user.screen_name.clone(),
+                    text: tweet.full_text.clone(),
+                    avatar_url: tweet.user.profile_image_url_https.clone(),
+                    variants,
+                    likes: tweet.likes,
+                    created_at: format_date(&tweet.created_at),
+                };
+                return Ok(TweetInfo {
+                    author: parent.author.clone(),
+                    created_at: parent.created_at.clone(),
+                    text: parent.text.clone(),
+                    quoted_tweet,
+                    in_reply_to: Some(reply_data),
+                    variants: parent.variants.clone(),
+                    avatar_url: parent.avatar_url.clone(),
+                    likes: parent.likes,
+                });
+            }
+        }
+    }
 
     Ok(TweetInfo {
         author: tweet.user.screen_name.clone(),
@@ -183,13 +235,13 @@ fn bitrate_to_label(bitrate: u64) -> String {
     match bitrate {
         b if b >= 5_000_000 => "1080p".to_string(),
         b if b >= 1_500_000 => "720p".to_string(),
-        b if b >= 600_000  => "480p".to_string(),
-        b if b > 0         => "360p".to_string(),
-        _                    => "low".to_string(),
+        b if b >= 600_000   => "480p".to_string(),
+        b if b > 0          => "360p".to_string(),
+        _                   => "low".to_string(),
     }
 }
 
-fn format_date(raw: &str) -> String {
+pub fn format_date(raw: &str) -> String {
     use chrono::DateTime;
     if let Ok(dt) = DateTime::parse_from_rfc3339(raw) {
         return dt.format("%b %-d, %Y").to_string();
