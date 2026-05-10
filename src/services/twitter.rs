@@ -86,6 +86,7 @@ fn tweet_ref_from(tweet: &SyndicationTweet) -> TweetRef {
     let variants = parse_variants(tweet).unwrap_or_default();
     TweetRef {
         author: tweet.user.screen_name.clone(),
+        display_name: tweet.user.name.clone(),
         text: tweet.full_text.clone(),
         avatar_url: tweet.user.profile_image_url_https.clone(),
         variants,
@@ -117,6 +118,7 @@ pub async fn fetch_quoted_tweet(
 
     Some(TweetRef {
         author: quoted.user.screen_name.clone(),
+        display_name: quoted.user.name.clone(),
         text: quoted.full_text.clone(),
         avatar_url: quoted.user.profile_image_url_https.clone(),
         variants: vec![],
@@ -199,6 +201,7 @@ pub async fn build_tweet_info(
             if !parent.variants.is_empty() {
                 let reply_data = TweetRef {
                     author: tweet.user.screen_name.clone(),
+                    display_name: tweet.user.name.clone(),
                     text: tweet.full_text.clone(),
                     avatar_url: tweet.user.profile_image_url_https.clone(),
                     variants,
@@ -207,6 +210,7 @@ pub async fn build_tweet_info(
                 };
                 return Ok(TweetInfo {
                     author: parent.author.clone(),
+                    display_name: parent.display_name.clone(),
                     created_at: parent.created_at.clone(),
                     text: parent.text.clone(),
                     quoted_tweet,
@@ -221,6 +225,7 @@ pub async fn build_tweet_info(
 
     Ok(TweetInfo {
         author: tweet.user.screen_name.clone(),
+        display_name: tweet.user.name.clone(),
         created_at: format_date(&tweet.created_at),
         text: tweet.full_text.clone(),
         quoted_tweet,

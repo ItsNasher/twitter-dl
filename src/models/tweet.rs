@@ -4,6 +4,7 @@ use crate::models::VideoVariant;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweetRef {
     pub author: String,
+    pub display_name: String,
     pub text: String,
     pub avatar_url: Option<String>,
     pub variants: Vec<VideoVariant>,
@@ -14,6 +15,7 @@ pub struct TweetRef {
 #[derive(Debug, Clone, Serialize)]
 pub struct TweetInfo {
     pub author: String,
+    pub display_name: String,
     pub created_at: String,
     pub text: String,
     pub quoted_tweet: Option<TweetRef>,
@@ -79,6 +81,8 @@ pub type ExtendedEntities = MediaEntities;
 #[derive(Debug, Deserialize, Default)]
 pub struct SyndicationUser {
     pub screen_name: String,
+    #[serde(default)]
+    pub name: String,
     #[serde(default)]
     pub profile_image_url_https: Option<String>,
 }
