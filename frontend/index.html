@@ -125,10 +125,16 @@
 
           <!-- full tweet card -->
           <div class="tweet-card" id="tweetCard">
+            <!-- thread line extending from main avatar to reply avatar -->
+            <div class="tweet-card-thread-line" id="threadLine" style="display:none;"></div>
 
             <div class="tweet-card-header">
-              <img class="tweet-card-avatar" id="tweetCardAvatarImg" style="display:none" alt="" />
-              <div class="tweet-card-avatar-placeholder" id="tweetCardAvatar">?</div>
+              <!-- avatar col: avatar on top -->
+              <div class="tweet-card-avatar-col">
+                <img class="tweet-card-avatar" id="tweetCardAvatarImg" style="display:none" alt="" />
+                <div class="tweet-card-avatar-placeholder" id="tweetCardAvatar">?</div>
+              </div>
+              <!-- name / handle / X logo -->
               <div class="tweet-card-names">
                 <span class="tweet-card-name">
                   <span id="tweetCardName">Display Name</span>
@@ -168,9 +174,31 @@
               </span>
             </div>
 
+            <!-- reply thread continuation (shown when optReply checked + captions on) -->
+            <div class="tweet-reply-context" id="replyContext" style="display:none;">
+              <div class="reply-top-row">
+                <div class="tweet-card-avatar-col">
+                  <img class="tweet-card-avatar" id="replyAvatarImg" style="display:none" alt="" />
+                  <div class="tweet-card-avatar-placeholder" id="replyAvatarPlaceholder">?</div>
+                </div>
+                <div class="reply-header">
+                  <span class="reply-name" id="replyDisplayName"></span>
+                  <span class="reply-handle" id="replyHandle"></span>
+                </div>
+              </div>
+              <p class="reply-mini-text" id="replyText"></p>
+              <div class="reply-mini-video-wrap" id="replyVideoWrap" style="display:none;">
+                <div class="video-loading-overlay" id="replyVideoOverlay">
+                  <div class="loading-bars"><span></span><span></span><span></span><span></span></div>
+                  <p class="loading-text">loading...</p>
+                </div>
+                <video id="replyPlayer" controls playsinline></video>
+              </div>
+              <span class="reply-mini-time" id="replyTimestamp"></span>
+            </div>
+
           </div>
 
-          <!-- meta + quality always visible below whichever view is active -->
           <div class="video-meta-area">
             <div class="video-meta-top">
               <span class="video-author" id="videoAuthor">@username</span>
@@ -238,8 +266,8 @@
               </span>
             </div>
             <div class="option-text">
-              <span class="option-label">include replied-to tweet</span>
-              <span class="option-desc">prepend the tweet this is replying to</span>
+              <span class="option-label">include reply to tweet</span>
+              <span class="option-desc">include the tweet replying to this video</span>
             </div>
             <span class="option-badge" id="badgeReply" style="display:none;">detected</span>
           </label>

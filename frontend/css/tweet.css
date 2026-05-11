@@ -1,4 +1,4 @@
-/* tweet caption */
+/* tweet */
 
 .tweet-card {
   display: none;
@@ -6,7 +6,8 @@
   width: 100%;
   background: #000;
   border-radius: 0;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
 }
 
 .tweet-card.visible {
@@ -15,10 +16,18 @@
 
 .tweet-card-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 14px 16px 10px;
   background: #000;
+}
+
+.tweet-card-avatar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 42px;
 }
 
 .tweet-card-avatar {
@@ -45,12 +54,26 @@
   font-weight: 600;
 }
 
+/* thread line
+*/
+.tweet-card-thread-line {
+  position: absolute;
+  left: 36px;
+  top: 60px;
+  width: 2px;
+  background: #2f3336;
+  border-radius: 1px;
+  z-index: 1;
+  pointer-events: none;
+}
+
 .tweet-card-names {
   display: flex;
   flex-direction: column;
   gap: 1px;
   flex: 1;
   min-width: 0;
+  padding-top: 2px;
 }
 
 .tweet-card-name {
@@ -86,11 +109,16 @@
   flex-shrink: 0;
   color: #fff;
   opacity: 0.7;
+  padding-top: 2px;
 }
 
 .tweet-card-body {
   padding: 0 16px 12px;
   background: #000;
+}
+
+.tweet-card.has-reply-active .tweet-card-body {
+  padding: 0 16px 12px 68px;
 }
 
 .tweet-card-text {
@@ -110,6 +138,10 @@
   padding: 0 16px;
 }
 
+.tweet-card.has-reply-active .tweet-card-video-wrap {
+  padding: 0 16px 0 68px;
+}
+
 .tweet-card-video-wrap video {
   width: 100%;
   max-height: 400px;
@@ -125,8 +157,12 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px 14px;
+  padding: 10px 16px 8px;
   background: #000;
+}
+
+.tweet-card.has-reply-active .tweet-card-footer {
+  padding: 10px 16px 8px 68px;
 }
 
 .tweet-card-footer-time {
@@ -157,4 +193,91 @@
   position: absolute;
   inset: 0;
   min-height: 180px;
+}
+
+.tweet-reply-context {
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px 16px;
+  background: #000;
+}
+
+.reply-top-row {
+  display: flex;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.reply-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+  padding-top: 2px;
+}
+
+.reply-name {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: #e7e9ea;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reply-handle {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: #71767B;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reply-mini-text {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: #e7e9ea;
+  line-height: 1.5;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 6px;
+  margin-top: 2px;
+}
+
+.reply-mini-video-wrap {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #2f3336;
+  background: #000;
+  line-height: 0;
+  margin-bottom: 8px;
+}
+
+.reply-mini-video-wrap video {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+
+.reply-mini-video-wrap .video-loading-overlay {
+  position: absolute;
+  inset: 0;
+  min-height: 80px;
+  background: #0a0a0a;
+}
+
+.reply-mini-time {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: #71767B;
+  display: block;
 }
