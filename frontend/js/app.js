@@ -93,7 +93,7 @@ function updateThreadLine() {
 
   const cardRect   = card.getBoundingClientRect();
   const rowRect    = replyTopRow.getBoundingClientRect();
-  const endY       = rowRect.top - cardRect.top - 4;
+  const endY       = rowRect.top - cardRect.top + 10;
   const startY     = 60;
   const height     = Math.max(0, endY - startY);
   threadLine.style.height = height + "px";
