@@ -156,7 +156,7 @@ function loadVideoPreview() {
   }, { once: true });
   player.load();
 
-  // reset card + reply players
+  // reset card and reply players
   const cardPlayer = document.getElementById("tweetCardPlayer");
   cardPlayer.pause();
   cardPlayer.removeAttribute("src");
