@@ -281,3 +281,123 @@
     color: #71767b;
     display: block;
 }
+
+/* quote tweet card */
+.tweet-card.has-quote-active .tweet-card-video-wrap {
+    display: none !important;
+}
+
+.quote-card {
+    margin: 0 16px 4px;
+    border: 1px solid #2f3336;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #000;
+}
+
+.tweet-card.has-reply-active .quote-card {
+    margin: 0 16px 0 68px;
+}
+
+.quote-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 12px 6px;
+}
+
+.quote-card-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.quote-card-avatar-placeholder {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #1d2230;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4a8cf7;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.quote-card-names {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.quote-card-display-name {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 700;
+    color: #e7e9ea;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.quote-card-handle {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: #71767b;
+    white-space: nowrap;
+}
+
+.quote-card-date {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: #71767b;
+    white-space: nowrap;
+}
+
+.quote-card-date::before {
+    content: "·";
+    margin-right: 4px;
+}
+
+.quote-card-text {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    color: #e7e9ea;
+    line-height: 1.5;
+    word-break: break-word;
+    padding: 0 12px 10px;
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.quote-card-video-wrap {
+    position: relative;
+    background: #000;
+    line-height: 0;
+}
+
+.quote-card-video-wrap video {
+    width: 100%;
+    max-height: 320px;
+    object-fit: contain;
+    display: block;
+    background: #000;
+}
+
+.quote-card-video-wrap .video-loading-overlay {
+    position: absolute;
+    inset: 0;
+    min-height: 140px;
+    background: #0a0a0a;
+}

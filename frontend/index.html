@@ -155,6 +155,27 @@
               <p class="tweet-card-text" id="tweetCardText"></p>
             </div>
 
+            <!-- quoted tweet box  -->
+            <div class="quote-card" id="quoteCard" style="display:none;">
+              <div class="quote-card-header">
+                <img class="quote-card-avatar" id="quoteAvatarImg" style="display:none" alt="" />
+                <div class="quote-card-avatar-placeholder" id="quoteAvatarPlaceholder">?</div>
+                <div class="quote-card-names">
+                  <span class="quote-card-display-name" id="quoteDisplayName"></span>
+                  <span class="quote-card-handle" id="quoteHandle"></span>
+                  <span class="quote-card-date" id="quoteDate"></span>
+                </div>
+              </div>
+              <p class="quote-card-text" id="quoteText"></p>
+              <div class="quote-card-video-wrap" id="quoteVideoWrap" style="display:none;">
+                <div class="video-loading-overlay" id="quoteVideoOverlay">
+                  <div class="loading-bars"><span></span><span></span><span></span><span></span></div>
+                  <p class="loading-text">loading...</p>
+                </div>
+                <video id="quotePlayer" controls playsinline></video>
+              </div>
+            </div>
+
             <div class="tweet-card-video-wrap">
               <div class="video-loading-overlay" id="tweetCardLoadingOverlay">
                 <div class="loading-bars"><span></span><span></span><span></span><span></span></div>
@@ -225,7 +246,7 @@
 
         <div class="options-group">
 
-          <label class="option-row">
+          <label class="option-row" id="optCaptionsRow">
             <div class="option-check-wrap">
               <input type="checkbox" id="optCaptions" class="option-check" />
               <span class="option-custom-check">
