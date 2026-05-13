@@ -10,14 +10,14 @@ async function fetchTweetInfo(url) {
   return res.json();
 }
 
-async function fetchVideoStream(url, quality, { includeQuoted, includeReply } = {}) {
+async function fetchVideoStream(url, quality, { includeQuote, includeReply } = {}) {
   const res = await fetch(`${API_BASE}/download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       url,
       quality,
-      include_quote: includeQuoted ?? false,
+      include_quote: includeQuote ?? false,
       include_reply: includeReply ?? false,
     }),
   });
@@ -25,13 +25,13 @@ async function fetchVideoStream(url, quality, { includeQuoted, includeReply } = 
   return res.blob();
 }
 
-async function fetchCaptions(url, { includeQuoted, includeReply } = {}) {
+async function fetchCaptions(url, { includeQuote, includeReply } = {}) {
   const res = await fetch(`${API_BASE}/captions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       url,
-      include_quote: includeQuoted ?? false,
+      include_quote: includeQuote ?? false,
       include_reply: includeReply ?? false,
     }),
   });
@@ -39,14 +39,14 @@ async function fetchCaptions(url, { includeQuoted, includeReply } = {}) {
   return res.blob();
 }
 
-async function fetchAudioOnly(url, quality, { includeQuoted, includeReply } = {}) {
+async function fetchAudioOnly(url, quality, { includeQuote, includeReply } = {}) {
   const res = await fetch(`${API_BASE}/audio`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       url,
       quality,
-      include_quote: includeQuoted ?? false,
+      include_quote: includeQuote ?? false,
       include_reply: includeReply ?? false,
     }),
   });

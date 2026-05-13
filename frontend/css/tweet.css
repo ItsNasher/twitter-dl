@@ -283,10 +283,6 @@
 }
 
 /* quote tweet card */
-.tweet-card.has-quote-active .tweet-card-video-wrap {
-    display: none !important;
-}
-
 .quote-card {
     margin: 0 16px 4px;
     border: 1px solid #2f3336;

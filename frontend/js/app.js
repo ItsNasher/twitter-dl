@@ -1,6 +1,6 @@
 let currentTweetData = null;
+let activeTweetData  = null;
 let selectedQuality  = "720p";
-let cardPlayerReady  = false;
 let replyPlayerReady = false;
 let quotePlayerReady = false;
 
@@ -13,7 +13,8 @@ document.getElementById("qualityPills").addEventListener("click", (e) => {
   selectedQuality = pill.textContent.trim();
   if (currentTweetData) {
     document.getElementById("optCaptions").checked = false;
-    document.getElementById("optReply").checked = false;
+    document.getElementById("optReply").checked   = false;
+    document.getElementById("optQuoted").checked   = false;
     setCaptionMode(false);
     loadVideoPreview();
   }
@@ -37,51 +38,31 @@ document.getElementById("optReply").addEventListener("change", () => {
 
 // quoted toggle
 document.getElementById("optQuoted").addEventListener("change", () => {
-  if (document.getElementById("optCaptions").checked) {
-    updateQuoteContext();
-  }
+  updateQuoteContext();
 });
 
 function setCaptionMode(on) {
-  const thumbArea     = document.getElementById("videoThumbArea");
-  const tweetCard     = document.getElementById("tweetCard");
-  const player        = document.getElementById("videoPlayer");
-  const cardPlayer    = document.getElementById("tweetCardPlayer");
-  const quotePlayer   = document.getElementById("quotePlayer");
-  const hasOwnVideo   = currentTweetData?.variants?.length > 0;
-  const hasQuoteVideo = currentTweetData?.quoted_tweet?.variants?.length > 0;
-
-  player.pause();
-  cardPlayer.pause();
-  quotePlayer.pause();
+  const thumbArea = document.getElementById("videoThumbArea");
+  const tweetCard = document.getElementById("tweetCard");
+  const player    = document.getElementById("videoPlayer");
 
   if (on) {
     thumbArea.style.display = "none";
     tweetCard.classList.add("visible");
-    if (hasOwnVideo) {
-      if (!cardPlayerReady) {
-        loadCardPlayer();
-      } else {
-        cardPlayer.currentTime = player.currentTime;
-      }
-    }
+    document.querySelector(".video-meta-area").style.display = "none";
+    const videoWrap = document.querySelector(".tweet-card-video-wrap");
+    if (videoWrap) videoWrap.appendChild(player);
     updateReplyContext();
-    updateQuoteContext();
-    if (!hasOwnVideo && hasQuoteVideo && quotePlayerReady) {
-      quotePlayer.currentTime = player.currentTime;
-    }
+    syncQuoteVisibility();
   } else {
     tweetCard.classList.remove("visible");
     thumbArea.style.display = "flex";
-    if (cardPlayerReady) {
-      player.currentTime = cardPlayer.currentTime;
-    } else if (quotePlayerReady && !hasOwnVideo && hasQuoteVideo) {
-      player.currentTime = quotePlayer.currentTime;
-    }
+    thumbArea.appendChild(player);
     document.getElementById("replyContext").style.display = "none";
     document.getElementById("quoteCard").style.display    = "none";
     document.getElementById("threadLine").style.display   = "none";
     document.getElementById("tweetCard").classList.remove("has-quote-active");
+    document.querySelector(".video-meta-area").style.display = "";
   }
 }
 
@@ -120,20 +101,73 @@ function updateThreadLine() {
   threadLine.style.height = height + "px";
 }
 
-function updateQuoteContext() {
+function switchToTweet(tweet) {
+  if (!tweet) return;
+  activeTweetData = tweet;
+
+  const cleanText = (tweet.text || "").replace(/\s*https:\/\/t\.co\/\S+/g, "").trim();
+  document.getElementById("videoAuthor").textContent = `@${tweet.author || "unknown"}`;
+  document.getElementById("videoDate").textContent   = tweet.created_at || "—";
+  document.getElementById("videoText").textContent   = cleanText;
+
+  const placeholder = document.getElementById("tweetCardAvatar");
+  const img         = document.getElementById("tweetCardAvatarImg");
+  if (tweet.avatar_url) {
+    placeholder.style.display = "none";
+    img.src = tweet.avatar_url;
+    img.style.display = "block";
+  } else {
+    placeholder.textContent   = ((tweet.display_name || tweet.author) || "?")[0].toUpperCase();
+    placeholder.style.display = "flex";
+    img.style.display         = "none";
+  }
+  document.getElementById("tweetCardName").textContent   = tweet.display_name || tweet.author || "unknown";
+  document.getElementById("tweetCardHandle").textContent = `@${tweet.author || "unknown"}`;
+  document.getElementById("tweetCardText").textContent   = cleanText;
+  document.getElementById("tweetCardTime").textContent   = tweet.created_at || "—";
+  document.getElementById("tweetCardLikes").textContent  = tweet.likes != null ? Number(tweet.likes).toLocaleString() : "—";
+
+  if (tweet.variants && tweet.variants.length > 0) {
+    const container = document.getElementById("qualityPills");
+    container.innerHTML = "";
+    const preferred = tweet.variants.find(v => v.label === "720p") || tweet.variants[0];
+    selectedQuality = preferred.label;
+    tweet.variants.forEach(v => {
+      const btn = document.createElement("button");
+      btn.className = "quality-pill" + (v.label === selectedQuality ? " active" : "");
+      btn.textContent = v.label;
+      container.appendChild(btn);
+    });
+  }
+
+}
+
+function syncQuoteVisibility() {
   const quoteCard    = document.getElementById("quoteCard");
   const tweetCard    = document.getElementById("tweetCard");
   const hasQuote     = !!currentTweetData?.quoted_tweet;
   const quoteChecked = document.getElementById("optQuoted").checked;
 
-  if (hasQuote && quoteChecked) {
-    quoteCard.style.display = "block";
-    tweetCard.classList.add("has-quote-active");
-    if (!quotePlayerReady) loadQuotePlayer();
+  if (!hasQuote) return;
+
+  quoteCard.style.display = quoteChecked ? "block" : "none";
+  tweetCard.classList.toggle("has-quote-active", quoteChecked);
+}
+
+function updateQuoteContext() {
+  const hasQuote     = !!currentTweetData?.quoted_tweet;
+  const quoteChecked = document.getElementById("optQuoted").checked;
+
+  if (!hasQuote) return;
+
+  if (quoteChecked) {
+    switchToTweet(currentTweetData);
   } else {
-    quoteCard.style.display = "none";
-    tweetCard.classList.remove("has-quote-active");
+    switchToTweet(currentTweetData.quoted_tweet);
   }
+
+  syncQuoteVisibility();
+  loadVideoPreview();
 }
 
 function loadQuotePlayer() {
@@ -199,7 +233,8 @@ async function handleFetch() {
 
 // preview
 function loadVideoPreview() {
-  if (!currentTweetData) return;
+  const tweet = activeTweetData || currentTweetData;
+  if (!tweet) return;
 
   const player   = document.getElementById("videoPlayer");
   const overlay  = document.getElementById("videoLoadingOverlay");
@@ -212,10 +247,12 @@ function loadVideoPreview() {
   overlay.style.display = "flex";
   overlay.innerHTML     = `<p class="loading-text">loading preview...</p>`;
 
-  let variant = currentTweetData.variants?.find(v => v.label === selectedQuality)
-    || currentTweetData.variants?.[0]
-    || currentTweetData.quoted_tweet?.variants?.find(v => v.label === selectedQuality)
-    || currentTweetData.quoted_tweet?.variants?.[0];
+  let variant = tweet.variants?.find(v => v.label === selectedQuality)
+    || tweet.variants?.[0];
+  if (!variant && activeTweetData === currentTweetData && currentTweetData?.quoted_tweet?.variants?.length) {
+    const qv = currentTweetData.quoted_tweet.variants;
+    variant = qv.find(v => v.label === selectedQuality) || qv[0];
+  }
   if (!variant) {
     overlay.innerHTML = `<p class="loading-text" style="color:#71767b">no video available</p>`;
     setOptionsLocked(false);
@@ -238,13 +275,7 @@ function loadVideoPreview() {
   }, { once: true });
   player.load();
 
-  // reset card, reply, and quote players
-  const cardPlayer = document.getElementById("tweetCardPlayer");
-  cardPlayer.pause();
-  cardPlayer.removeAttribute("src");
-  cardPlayer.load();
-  cardPlayerReady = false;
-
+  // reset reply and quote players
   const replyPlayer = document.getElementById("replyPlayer");
   replyPlayer.pause();
   replyPlayer.removeAttribute("src");
@@ -276,37 +307,6 @@ function setOptionsLocked(locked) {
       check.disabled = false;
     }
   });
-}
-
-function loadCardPlayer() {
-  const variant = currentTweetData.variants.find(v => v.label === selectedQuality)
-    || currentTweetData.variants[0];
-  if (!variant) {
-    cardPlayerReady = true;
-    return;
-  }
-
-  const proxyUrl    = `http://localhost:3000/api/preview?url=${encodeURIComponent(variant.url)}`;
-  const cardPlayer  = document.getElementById("tweetCardPlayer");
-  const cardOverlay = document.getElementById("tweetCardLoadingOverlay");
-  const plainPlayer = document.getElementById("videoPlayer");
-
-  cardOverlay.style.display    = "flex";
-  cardPlayer.style.display     = "block";
-  cardPlayer.removeAttribute("src");
-  cardPlayer.load();
-
-  cardPlayer.src = proxyUrl;
-  cardPlayer.addEventListener("canplay", () => {
-    cardOverlay.style.display = "none";
-    cardPlayerReady = true;
-    cardPlayer.currentTime = plainPlayer.currentTime;
-    requestAnimationFrame(updateThreadLine);
-  }, { once: true });
-  cardPlayer.addEventListener("error", () => {
-    cardOverlay.innerHTML = `<p class="loading-text" style="color:var(--error)">preview unavailable</p>`;
-  }, { once: true });
-  cardPlayer.load();
 }
 
 // reply player
@@ -350,19 +350,24 @@ function loadReplyPlayer() {
 async function handleDownload() {
   if (!currentTweetData) return;
 
-  const url    = document.getElementById("twitterUrl").value.trim();
-  const author = currentTweetData.author;
+  let url    = document.getElementById("twitterUrl").value.trim();
   const opts   = {
-    includeQuoted: document.getElementById("optQuoted").checked,
+    includeQuote: document.getElementById("optQuoted").checked,
     includeReply:  document.getElementById("optReply").checked,
   };
+
+  // When quote is OFF, download the quoted (inner) tweet directly
+  if (!opts.includeQuote && currentTweetData.quoted_tweet?.id_str) {
+    url = `https://x.com/i/web/status/${currentTweetData.quoted_tweet.id_str}`;
+  }
 
   try {
     showLoading("downloading video...");
     const blob = await fetchVideoStream(url, selectedQuality, opts);
+    const author = activeTweetData?.author || currentTweetData.author;
     triggerBlobDownload(blob, getFilenameFromTweet(author, "mp4"));
     incrementStat("totalCount");
-    if (opts.includeQuoted) incrementStat("quoteCount");
+    if (opts.includeQuote) incrementStat("quoteCount");
     if (opts.includeReply)  incrementStat("replyCount");
   } catch (err) {
     showError(err.message || "download failed. try again.");
@@ -374,30 +379,6 @@ async function handleDownload() {
 function renderResult(data) {
   document.getElementById("panelEmpty").style.display  = "none";
   document.getElementById("panelLoaded").style.display = "flex";
-
-  const cleanText = (data.text || "").replace(/\s*https:\/\/t\.co\/\S+/g, "").trim();
-
-  document.getElementById("videoAuthor").textContent = `@${data.author || "unknown"}`;
-  document.getElementById("videoDate").textContent   = data.created_at || "—";
-  document.getElementById("videoText").textContent   = cleanText;
-
-  // main tweet card
-  const placeholder = document.getElementById("tweetCardAvatar");
-  const img         = document.getElementById("tweetCardAvatarImg");
-  if (data.avatar_url) {
-    placeholder.style.display = "none";
-    img.src = data.avatar_url;
-    img.style.display = "block";
-  } else {
-    placeholder.textContent   = ((data.display_name || data.author) || "?")[0].toUpperCase();
-    placeholder.style.display = "flex";
-    img.style.display         = "none";
-  }
-  document.getElementById("tweetCardName").textContent   = data.display_name || data.author || "unknown";
-  document.getElementById("tweetCardHandle").textContent = `@${data.author || "unknown"}`;
-  document.getElementById("tweetCardText").textContent   = cleanText;
-  document.getElementById("tweetCardTime").textContent   = data.created_at || "—";
-  document.getElementById("tweetCardLikes").textContent  = data.likes != null ? Number(data.likes).toLocaleString() : "—";
 
   // reply context mini-card content
   if (data.in_reply_to) {
@@ -421,7 +402,7 @@ function renderResult(data) {
     document.getElementById("replyTimestamp").textContent   = r.created_at || "";
   }
 
-  // quoted tweet card content
+  // quoted tweet card content (always rendered, visibility controlled by toggle)
   if (data.quoted_tweet) {
     const q = data.quoted_tweet;
     const qClean = (q.text || "").replace(/\s*https:\/\/t\.co\/\S+/g, "").trim();
@@ -455,18 +436,16 @@ function renderResult(data) {
   setOptionEnabled("optQuotedRow", "optQuoted", "badgeQuoted", !!data.quoted_tweet);
   setOptionEnabled("optReplyRow",  "optReply",  "badgeReply",  !!data.in_reply_to);
 
-  if (data.variants && data.variants.length > 0) {
-    const container = document.getElementById("qualityPills");
-    container.innerHTML = "";
-    const preferred = data.variants.find(v => v.label === "720p") || data.variants[0];
-    selectedQuality = preferred.label;
-    data.variants.forEach((v) => {
-      const btn       = document.createElement("button");
-      btn.className   = "quality-pill" + (v.label === selectedQuality ? " active" : "");
-      btn.textContent = v.label;
-      container.appendChild(btn);
-    });
+  // Don't auto-select — user opts in
+  if (data.quoted_tweet) {
+    document.getElementById("optQuoted").checked = false;
   }
+  if (data.in_reply_to) {
+    document.getElementById("optReply").checked = false;
+  }
+
+  // Initial display respects the quote toggle (off → inner tweet, on → outer tweet)
+  switchToTweet(data.quoted_tweet || data);
 }
 
 // option row helper
