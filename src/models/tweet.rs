@@ -10,6 +10,8 @@ pub struct TweetRef {
     pub variants: Vec<VideoVariant>,
     pub likes: Option<u64>,
     pub created_at: String,
+    #[serde(default)]
+    pub id_str: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,6 +47,8 @@ pub struct SyndicationTweet {
     pub in_reply_to_screen_name: Option<String>,
     #[serde(rename = "in_reply_to_status_id_str")]
     pub in_reply_to_status_id_str: Option<String>,
+    #[serde(default)]
+    pub id_str: Option<String>,
     #[serde(default, alias = "favorite_count")]
     pub likes: Option<u64>,
 }

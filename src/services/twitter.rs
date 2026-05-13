@@ -92,6 +92,7 @@ fn tweet_ref_from(tweet: &SyndicationTweet) -> TweetRef {
         variants,
         likes: tweet.likes,
         created_at: format_date(&tweet.created_at),
+        id_str: tweet.id_str.clone(),
     }
 }
 
@@ -124,6 +125,7 @@ pub async fn fetch_quoted_tweet(
         variants: vec![],
         likes: None,
         created_at: String::new(),
+        id_str: quoted.id_str.clone(),
     })
 }
 
@@ -207,6 +209,7 @@ pub async fn build_tweet_info(
                     variants,
                     likes: tweet.likes,
                     created_at: format_date(&tweet.created_at),
+                    id_str: tweet.id_str.clone(),
                 };
                 return Ok(TweetInfo {
                     author: parent.author.clone(),
