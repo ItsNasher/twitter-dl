@@ -155,28 +155,39 @@
               <p class="tweet-card-text" id="tweetCardText"></p>
             </div>
 
-            <!-- quoted tweet box  -->
-            <div class="quote-card" id="quoteCard" style="display:none;">
-              <div class="quote-card-header">
-                <img class="quote-card-avatar" id="quoteAvatarImg" style="display:none" alt="" />
-                <div class="quote-card-avatar-placeholder" id="quoteAvatarPlaceholder">?</div>
-                <div class="quote-card-names">
-                  <span class="quote-card-display-name" id="quoteDisplayName"></span>
-                  <span class="quote-card-handle" id="quoteHandle"></span>
-                  <span class="quote-card-date" id="quoteDate"></span>
+            <div class="tweet-media-group" id="tweetMediaGroup" style="display:none;">
+
+              <div class="quote-media-wrapper" id="quoteMediaWrapper">
+
+                <div class="quote-card" id="quoteCard">
+                  <div class="quote-card-header">
+                    <img class="quote-card-avatar" id="quoteAvatar" src="" alt="" />
+                    <div class="quote-card-names">
+                      <span class="quote-card-display-name" id="quoteName"></span>
+                      <span class="quote-card-handle" id="quoteHandle"></span>
+                      <span class="quote-card-date" id="quoteDate"></span>
+                    </div>
+                  </div>
+                  <div class="quote-card-text" id="quoteText"></div>
                 </div>
-              </div>
-              <p class="quote-card-text" id="quoteText"></p>
-              <div class="quote-card-video-wrap" id="quoteVideoWrap" style="display:none;">
-                <div class="video-loading-overlay" id="quoteVideoOverlay">
-                  <div class="loading-bars"><span></span><span></span><span></span><span></span></div>
-                  <p class="loading-text">loading...</p>
+
+                <div class="tweet-card-media" id="tweetMedia" style="display:none;">
+                  <div class="video-container" id="videoContainer">
+                    <div class="video-loading-overlay" id="quoteVideoOverlay">
+                      <div class="loading-bars"><span></span><span></span><span></span><span></span></div>
+                      <p class="loading-text">loading...</p>
+                    </div>
+                    <video id="quotePlayer" controls playsinline></video>
+                  </div>
                 </div>
-                <video id="quotePlayer" controls playsinline></video>
+
               </div>
+
+              <div class="tweet-card-video-wrap" id="mainTweetVideoWrap"></div>
+
             </div>
 
-            <div class="tweet-card-video-wrap"></div>
+            <div class="tweet-card-video-wrap" id="standaloneVideoWrap"></div>
 
             <div class="tweet-card-footer">
               <span class="tweet-card-footer-time" id="tweetCardTime">—</span>

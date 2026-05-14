@@ -50,7 +50,11 @@ function setCaptionMode(on) {
     thumbArea.style.display = "none";
     tweetCard.classList.add("visible");
     document.querySelector(".video-meta-area").style.display = "none";
-    const videoWrap = document.querySelector(".tweet-card-video-wrap");
+    const hasQuote     = !!currentTweetData?.quoted_tweet;
+    const quoteChecked = document.getElementById("optQuoted").checked;
+    const videoWrap    = quoteChecked && hasQuote
+      ? document.getElementById("mainTweetVideoWrap")
+      : document.getElementById("standaloneVideoWrap");
     if (videoWrap) videoWrap.appendChild(player);
     updateReplyContext();
     syncQuoteVisibility();
@@ -58,9 +62,9 @@ function setCaptionMode(on) {
     tweetCard.classList.remove("visible");
     thumbArea.style.display = "flex";
     thumbArea.appendChild(player);
-    document.getElementById("replyContext").style.display = "none";
-    document.getElementById("quoteCard").style.display    = "none";
-    document.getElementById("threadLine").style.display   = "none";
+    document.getElementById("replyContext").style.display    = "none";
+    document.getElementById("tweetMediaGroup").style.display = "none";
+    document.getElementById("threadLine").style.display      = "none";
     document.getElementById("tweetCard").classList.remove("has-quote-active");
     document.querySelector(".video-meta-area").style.display = "";
   }
@@ -143,15 +147,23 @@ function switchToTweet(tweet) {
 }
 
 function syncQuoteVisibility() {
-  const quoteCard    = document.getElementById("quoteCard");
-  const tweetCard    = document.getElementById("tweetCard");
-  const hasQuote     = !!currentTweetData?.quoted_tweet;
+  const wrapper     = document.getElementById("tweetMediaGroup");
+  const tweetCard   = document.getElementById("tweetCard");
+  const hasQuote    = !!currentTweetData?.quoted_tweet;
   const quoteChecked = document.getElementById("optQuoted").checked;
 
   if (!hasQuote) return;
 
-  quoteCard.style.display = quoteChecked ? "block" : "none";
+  wrapper.style.display = quoteChecked ? "flex" : "none";
   tweetCard.classList.toggle("has-quote-active", quoteChecked);
+
+  if (document.getElementById("optCaptions").checked) {
+    const player = document.getElementById("videoPlayer");
+    const videoWrap = quoteChecked
+      ? document.getElementById("mainTweetVideoWrap")
+      : document.getElementById("standaloneVideoWrap");
+    if (videoWrap) videoWrap.appendChild(player);
+  }
 }
 
 function updateQuoteContext() {
@@ -177,7 +189,7 @@ function loadQuotePlayer() {
   const variant = (quote.variants || []).find(v => v.label === selectedQuality)
     || (quote.variants || [])[0];
 
-  const wrap    = document.getElementById("quoteVideoWrap");
+  const wrap    = document.getElementById("tweetMedia");
   const overlay = document.getElementById("quoteVideoOverlay");
   const player  = document.getElementById("quotePlayer");
 
@@ -406,28 +418,20 @@ function renderResult(data) {
   if (data.quoted_tweet) {
     const q = data.quoted_tweet;
     const qClean = (q.text || "").replace(/\s*https:\/\/t\.co\/\S+/g, "").trim();
-    const qImg = document.getElementById("quoteAvatarImg");
-    const qPh  = document.getElementById("quoteAvatarPlaceholder");
-    if (q.avatar_url) {
-      qImg.src = q.avatar_url;
-      qImg.style.display = "block";
-      qPh.style.display  = "none";
-    } else {
-      qPh.textContent   = ((q.display_name || q.author) || "?")[0].toUpperCase();
-      qPh.style.display = "flex";
-      qImg.style.display = "none";
-    }
-    document.getElementById("quoteDisplayName").textContent = q.display_name || q.author || "unknown";
+    const qImg = document.getElementById("quoteAvatar");
+    qImg.src = q.avatar_url || "";
+    qImg.alt = ((q.display_name || q.author) || "?")[0].toUpperCase();
+    document.getElementById("quoteName").textContent = q.display_name || q.author || "unknown";
     document.getElementById("quoteHandle").textContent      = `@${q.author || "unknown"}`;
     document.getElementById("quoteDate").textContent        = q.created_at || "";
     document.getElementById("quoteText").textContent        = qClean;
   }
 
   // reset states — fully tear down all players before new data
-  document.getElementById("optCaptions").checked        = false;
-  document.getElementById("replyContext").style.display = "none";
-  document.getElementById("quoteCard").style.display    = "none";
-  document.getElementById("threadLine").style.display   = "none";
+  document.getElementById("optCaptions").checked          = false;
+  document.getElementById("replyContext").style.display   = "none";
+  document.getElementById("tweetMediaGroup").style.display = "none";
+  document.getElementById("threadLine").style.display     = "none";
   document.getElementById("tweetCard").classList.remove("has-quote-active");
   replyPlayerReady = false;
   quotePlayerReady = false;
