@@ -1,4 +1,4 @@
-# twitter-dla
+# twitter-dl
 
 ## Project Overview
 A Twitter/X video downloader with a plain HTML/CSS/JS frontend and a Rust (Axum) backend.
