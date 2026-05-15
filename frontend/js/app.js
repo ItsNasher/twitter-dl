@@ -366,6 +366,7 @@ async function handleDownload() {
   const opts   = {
     includeQuote: document.getElementById("optQuoted").checked,
     includeReply:  document.getElementById("optReply").checked,
+    renderCard:    document.getElementById("optCaptions").checked,
   };
 
   // When quote is OFF, download the quoted (inner) tweet directly

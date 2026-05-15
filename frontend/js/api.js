@@ -10,7 +10,7 @@ async function fetchTweetInfo(url) {
   return res.json();
 }
 
-async function fetchVideoStream(url, quality, { includeQuote, includeReply } = {}) {
+async function fetchVideoStream(url, quality, { includeQuote, includeReply, renderCard } = {}) {
   const res = await fetch(`${API_BASE}/download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -19,6 +19,7 @@ async function fetchVideoStream(url, quality, { includeQuote, includeReply } = {
       quality,
       include_quote: includeQuote ?? false,
       include_reply: includeReply ?? false,
+      render_card: renderCard ?? false,
     }),
   });
   if (!res.ok) throw new Error(await res.text());
