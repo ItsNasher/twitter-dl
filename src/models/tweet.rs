@@ -141,4 +141,6 @@ pub struct DownloadRequest {
     pub include_quote: bool,
     #[serde(default)]
     pub include_reply: bool,
+    #[serde(default)]
+    pub render_card: bool,
 }

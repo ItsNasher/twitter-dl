@@ -17,9 +17,18 @@ pub fn pick_variant<'a>(variants: &'a [VideoVariant], quality: Option<&str>) -> 
     &variants[0]
 }
 pub async fn download_mp4(client: &Client, variant: &VideoVariant) -> Result<Bytes, AppError> {
-    let ts_bytes = fetch_hls_segments(client, &variant.url).await?;
-    let mp4 = remux_to_mp4(ts_bytes).await?;
-    Ok(mp4)
+    if variant.url.contains(".m3u8") || variant.url.contains("/pl/") {
+        let ts_bytes = fetch_hls_segments(client, &variant.url).await?;
+        remux_to_mp4(ts_bytes).await
+    } else {
+        let resp = client
+            .get(&variant.url)
+            .send()
+            .await?
+            .bytes()
+            .await?;
+        Ok(resp)
+    }
 }
 
 async fn fetch_hls_segments(client: &Client, m3u8_url: &str) -> Result<Bytes, AppError> {

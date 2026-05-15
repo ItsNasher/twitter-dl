@@ -10,7 +10,8 @@ use crate::{
     error::AppError,
     models::DownloadRequest,
     services::download::{merge_mp4s, original_reply_video, promoted_video, quoted_video},
-    services::twitter::{extract_tweet_id, fetch_tweet},
+    services::overlay,
+    services::twitter::{extract_tweet_id, fetch_tweet, tweet_ref_from},
     AppState,
 };
 
@@ -40,6 +41,13 @@ pub async fn handler(
 
     let merged = merge_mp4s(videos).await?;
 
+    let result = if body.render_card {
+        let tref = tweet_ref_from(&tweet);
+        overlay::apply_tweet_overlay(&state.client, merged, &tref, &tweet_id).await?
+    } else {
+        merged
+    };
+
     let filename = format!("{}_{}.mp4", tweet.user.screen_name, tweet_id);
 
     let response = Response::builder()
@@ -49,8 +57,8 @@ pub async fn handler(
             header::CONTENT_DISPOSITION,
             format!("attachment; filename=\"{}\"", filename),
         )
-        .header(header::CONTENT_LENGTH, merged.len())
-        .body(Body::from(merged))
+        .header(header::CONTENT_LENGTH, result.len())
+        .body(Body::from(result))
         .map_err(|e| AppError::Internal(e.into()))?;
 
     Ok(response)

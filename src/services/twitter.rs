@@ -82,7 +82,7 @@ pub async fn fetch_tweet(client: &Client, tweet_id: &str) -> Result<SyndicationT
     Ok(tweet)
 }
 
-fn tweet_ref_from(tweet: &SyndicationTweet) -> TweetRef {
+pub fn tweet_ref_from(tweet: &SyndicationTweet) -> TweetRef {
     let variants = parse_variants(tweet).unwrap_or_default();
     TweetRef {
         author: tweet.user.screen_name.clone(),
