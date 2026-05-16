@@ -81,23 +81,25 @@ pub async fn apply_tweet_overlay(
     let footer_val = escape_text_value(&footer_text);
 
     let filter = format!(
-        "[0:v]pad=w=iw:h=ih+{}:color=#14161A[padded];\
-         [1:v]scale={}:{}:flags=lanczos,format=rgba,\
+        "[0:v]pad=w=iw:h=ih+{bar}:y={bar}:color=#14161A[padded];\
+         [1:v]scale={asiz}:{asiz}:flags=lanczos,format=rgba,\
          geq=lum='p(X,Y)':a='if(lte(sqrt((X-W/2)^2+(Y-H/2)^2),W/2),255,0)'[ava];\
-         [padded][ava]overlay=x={}:y={}+{}[a0];\
-         [a0]drawtext={}text='{}':fontcolor=#CDD6F4:fontsize={}:x={}:y={}+{}[a1];\
-         [a1]drawtext={}text='{}':fontcolor=#8B92A8:fontsize={}:x={}:y={}+{}[a2];\
-         [a2]drawtext={}text='{}':fontcolor=#CDD6F4:fontsize={}:x={}:y={}+{}:\
-         line_spacing={}[a3];\
-         [a3]drawtext={}text='{}':fontcolor=#8B92A8:fontsize={}:x={}:y={}+{}",
-        bar_height,
-        avatar_size, avatar_size,
-        avatar_x, height, avatar_y,
-        font_arg, name_text, name_fs, name_x, height, name_y,
-        font_arg, handle_text, handle_fs, name_x, height, handle_y,
-        font_arg, body_text, body_fs, body_x, height, body_y,
-        body_lh,
-        font_arg, footer_val, footer_fs, footer_x, height, footer_y,
+         [padded][ava]overlay=x={ax}:y={ay}[a0];\
+         [a0]drawtext={fa}text='{nt}':fontcolor=#CDD6F4:fontsize={nfs}:x={nx}:y={ny}[a1];\
+         [a1]drawtext={fa}text='{ht}':fontcolor=#8B92A8:fontsize={hfs}:x={nx}:y={hy}[a2];\
+         [a2]drawtext={fa}text='{bt}':fontcolor=#CDD6F4:fontsize={bfs}:x={bx}:y={by}:\
+         line_spacing={blh},\
+         drawtext={fa}text='{fv}':fontcolor=#8B92A8:fontsize={ffs}:x={fx}:y={fy}[a3]",
+        bar  = bar_height,
+        asiz = avatar_size,
+        ax   = avatar_x,
+        ay   = avatar_y,
+        fa   = font_arg,
+        nt   = name_text,   nfs = name_fs,   nx = name_x,   ny = name_y,
+        ht   = handle_text, hfs = handle_fs,                hy = handle_y,
+        bt   = body_text,   bfs = body_fs,   bx = body_x,   by = body_y,
+        blh  = body_lh,
+        fv   = footer_val,  ffs = footer_fs, fx = footer_x, fy = footer_y,
     );
 
     let mut args = Vec::<String>::new();
@@ -119,14 +121,13 @@ pub async fn apply_tweet_overlay(
     args.push("-c:a".to_string());
     args.push("copy".to_string());
     args.push("-movflags".to_string());
-    args.push("faststart".to_string());
-    args.push("-f".to_string());
-    args.push("mp4".to_string());
-    args.push("pipe:1".to_string());
+    args.push("+faststart".to_string());
+    let out_path = dir.join("output.mp4");
+    args.push(out_path.to_str().unwrap().to_string());
 
     let child = Command::new("ffmpeg")
         .args(&args)
-        .stdout(Stdio::piped())
+        .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| AppError::Ffmpeg(format!("failed to spawn ffmpeg for overlay: {}", e)))?;
@@ -145,13 +146,16 @@ pub async fn apply_tweet_overlay(
         )));
     }
 
-    if output.stdout.is_empty() {
+    let result = std::fs::read(&out_path)
+        .map_err(|e| AppError::Internal(e.into()))?;
+
+    if result.is_empty() {
         return Err(AppError::Ffmpeg("ffmpeg overlay produced no output".into()));
     }
 
     let _ = std::fs::remove_dir_all(&dir);
 
-    Ok(Bytes::from(output.stdout))
+    Ok(Bytes::from(result))
 }
 
 async fn probe_video_dims(path: &Path) -> Result<(i32, i32), AppError> {
@@ -317,4 +321,5 @@ fn find_font() -> Option<PathBuf> {
 fn escape_text_value(s: &str) -> String {
     s.replace('\\', "\\\\")
      .replace('\'', "\\'")
+     .replace(':', "\\:")
 }
