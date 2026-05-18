@@ -39,15 +39,17 @@ twitter-dl/
 │       ├── mod.rs
 │       ├── captions.rs   # VTT→SRT conversion
 │       ├── download.rs   # MP4/SRT merging helpers
+│       ├── overlay.rs    # Pillow card rendering, ffmpeg compositing
 │       ├── twitter.rs    # Guest token, syndication API calls
 │       └── video.rs      # HLS segment merging, ffmpeg remux
 ├── .env                  # HOST, PORT
 ├── .env.example
 ├── .gitignore
+├── AGENTS.md
+├── apt.txt               # Railway system deps (fonts-noto-cjk, etc.)
 ├── Cargo.lock
 ├── Cargo.toml
-├── README.md
-└── AGENTS.md
+└── README.md
 ```
 
 ## API Contract

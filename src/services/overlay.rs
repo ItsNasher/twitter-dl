@@ -542,7 +542,18 @@ def make_card_bot(path):
         sep = '  \u00b7  '
         d.text((cur_x, text_y), sep, font=font_footer, fill=(113,118,123,255))
         cur_x += text_width(font_footer, sep)
-        heart_y_pos = {sec_gap} * SSAA + ({footer_fs} * SSAA - {heart_sz} * SSAA) // 2
+
+        # Measure the actual rendered glyph height — not the full em-box
+        try:
+            bb = font_footer.getbbox(likes_str)
+            glyph_top = bb[1]
+            glyph_h   = bb[3] - bb[1]
+        except Exception:
+            glyph_top = 0
+            glyph_h   = {footer_fs} * SSAA
+
+        heart_y_pos = text_y + glyph_top + (glyph_h - {heart_sz} * SSAA) // 2
+
         draw_heart(img, cur_x, heart_y_pos, {heart_sz} * SSAA)
         cur_x += {heart_sz} * SSAA + 4 * SSAA
         d.text((cur_x, text_y), likes_str, font=font_footer, fill=(113,118,123,255))
