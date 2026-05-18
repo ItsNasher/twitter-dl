@@ -10,7 +10,7 @@ async function fetchTweetInfo(url) {
   return res.json();
 }
 
-async function fetchVideoStream(url, quality, { includeQuote, includeReply, renderCard } = {}) {
+async function fetchVideoStream(url, quality, { includeQuote, includeReply, renderCard } = {}, onProgress) {
   const res = await fetch(`${API_BASE}/download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -23,7 +23,23 @@ async function fetchVideoStream(url, quality, { includeQuote, includeReply, rend
     }),
   });
   if (!res.ok) throw new Error(await res.text());
-  return res.blob();
+
+  const total = parseInt(res.headers.get('Content-Length') || '0', 10);
+  const reader = res.body.getReader();
+  const chunks = [];
+  let received = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (onProgress) {
+      onProgress(total ? received / total : -1);
+    }
+  }
+
+  return new Blob(chunks, { type: 'video/mp4' });
 }
 
 async function fetchCaptions(url, { includeQuote, includeReply } = {}) {

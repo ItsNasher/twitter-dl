@@ -728,6 +728,56 @@ a { color: inherit; text-decoration: none; }
 .dl-primary { background: var(--accent); color: white; }
 .dl-primary:hover { background: var(--accent-hover); }
 
+.dl-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+.dl-btn:disabled:hover { background: var(--accent); }
+
+/* download progress bar */
+.download-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border-subtle);
+  animation: fadeIn 200ms ease;
+}
+
+.progress-bar-track {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-surface);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 99px;
+  transition: width 120ms ease;
+}
+
+.progress-bar-fill.indeterminate {
+  width: 30%;
+  animation: progressIndeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes progressIndeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+.progress-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .dl-btn:active { transform: scale(0.97); }
 
 @keyframes slideUp {

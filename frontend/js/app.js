@@ -3,6 +3,7 @@ let activeTweetData  = null;
 let selectedQuality  = "720p";
 let replyPlayerReady = false;
 let quotePlayerReady = false;
+let isDownloading   = false;
 
 // quality options
 document.getElementById("qualityPills").addEventListener("click", (e) => {
@@ -360,7 +361,8 @@ function loadReplyPlayer() {
 }
 
 async function handleDownload() {
-  if (!currentTweetData) return;
+  if (!currentTweetData || isDownloading) return;
+  isDownloading = true;
 
   let url    = document.getElementById("twitterUrl").value.trim();
   const opts   = {
@@ -374,9 +376,29 @@ async function handleDownload() {
     url = `https://x.com/i/web/status/${currentTweetData.quoted_tweet.id_str}`;
   }
 
+  const dlBtn  = document.querySelector(".dl-btn.dl-primary");
+  const progEl = document.getElementById("downloadProgress");
+  const fillEl = document.getElementById("progressBarFill");
+  const textEl = document.getElementById("progressText");
+
+  dlBtn.disabled = true;
+  progEl.style.display = "flex";
+  fillEl.style.width = "0%";
+  fillEl.classList.remove("indeterminate");
+
   try {
-    showLoading("downloading video...");
-    const blob = await fetchVideoStream(url, selectedQuality, opts);
+    showLoading("preparing download...");
+
+    const blob = await fetchVideoStream(url, selectedQuality, opts, (pct) => {
+      if (pct < 0) {
+        // no Content-Length — indeterminate
+        fillEl.classList.add("indeterminate");
+      } else {
+        fillEl.classList.remove("indeterminate");
+        fillEl.style.width = `${Math.round(pct * 100)}%`;
+      }
+    });
+
     const author = activeTweetData?.author || currentTweetData.author;
     triggerBlobDownload(blob, getFilenameFromTweet(author, "mp4"));
     incrementStat("totalCount");
@@ -385,7 +407,12 @@ async function handleDownload() {
   } catch (err) {
     showError(err.message || "download failed. try again.");
   } finally {
+    dlBtn.disabled = false;
+    progEl.style.display = "none";
+    fillEl.style.width = "0%";
+    fillEl.classList.remove("indeterminate");
     hideLoading();
+    isDownloading = false;
   }
 }
 
