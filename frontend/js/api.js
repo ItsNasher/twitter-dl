@@ -29,6 +29,8 @@ async function fetchVideoStream(url, quality, { includeQuote, includeReply, rend
   const chunks = [];
   let received = 0;
 
+  if (onProgress) onProgress(-1);
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;

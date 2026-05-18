@@ -196,10 +196,10 @@ Run `cargo check` to see these:
 ✅ `id_str` on `SyndicationQuotedTweet` added for full-quote fetching
 ✅ `/api/info` now returns full `TweetRef` with variants for both quote and reply
 
-### ❌ Reply + quote tweet frontend design cleanup
+### ✅ Reply + quote tweet frontend design cleanup
 - Reply context moved below tweet card footer, polished inline (avatar + handle + text, no box/label)
-- Quote tweet still not rendered in captions mode — needs same treatment
-- Reply tweet card still needs styling polish (saving for tomorrow)
+- Quote tweet rendered in captions mode as a unified bordered box between main tweet body and footer
+- "include quoted tweet" renamed to "include quote to tweet" — when ON shows the outer tweet quoting the parent tweet with both videos in one box, when OFF shows just the inner tweet
 
 ### ❌ Download counter stuck at 0
 The `totalCount` stat never increments because no fetch is done server-side. The frontend runs `incrementStat("totalCount")` on download but there's no backend persistence.
@@ -212,3 +212,13 @@ When captions mode is on and user hits download, the output MP4 should have the 
 - Verified badge SVG as image overlay
 
 This is NOT what the current `merge_mp4s` in `services/download.rs` does — that just concatenates raw videos. The compositing approach will need a dedicated function in `services/download.rs` (or a new module) using ffmpeg's `drawtext`, `overlay`, and `color` filterchain.
+
+### ❌ Overlay rendering issues (`render_card`)
+
+1. **Performance**: downloading with captions (`render_card: true`) is slow — the ffmpeg overlay compositing with drawtext + Python Pillow asset generation takes several seconds before the download starts.
+
+2. ~~**Vertical videos**: when the source video is portrait/tall (e.g. 1080×1920), the overlay layout calculations assume a landscape aspect ratio. The card padding and bar heights don't scale correctly, making the video too large for the frame and the caption text is pushed off-screen or clipped.~~ **(FIXED)**
+
+3. ~~**Date/likes order**: the footer currently renders likes before the date (`"8.4K Likes · May 7, 2026"`). It should be date first, then likes (`"May 7, 2026 · 8.4K Likes"`).~~ **(FIXED)**
+
+4. ~~**Non-Latin text rendering**: tweets containing non-English scripts (Korean, Japanese, CJK, emoji, etc.) display as placeholder/tofu characters (`□` or missing glyph boxes). The bundled Geist font doesn't cover these codepoints — need a fallback font or a broader font like Noto Sans CJK.~~ **(FIXED — Noto Sans candidates added; falls back to fontconfig when no font file found)**

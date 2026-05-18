@@ -112,7 +112,7 @@ async fn remux_to_mp4(ts_bytes: Bytes) -> Result<Bytes, AppError> {
     stdin.write_all(&ts_bytes).await
         .map_err(|e| AppError::Ffmpeg(format!("failed to write to ffmpeg stdin: {}", e)))?;
     stdin.flush().await.ok();
-    drop(stdin); // close stdin so ffmpeg knows input is done
+    drop(stdin);
 
     let output = child
         .wait_with_output()

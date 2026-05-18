@@ -111,8 +111,6 @@ async fn main() {
         .parse()
         .expect("invalid address");
 
-    // Eager encoder detection — runs synchronously before the server starts
-    // so it never blocks a Tokio worker thread at request time.
     overlay::init_encoder();
 
     tracing::info!("twdl backend listening on http://{}", addr);

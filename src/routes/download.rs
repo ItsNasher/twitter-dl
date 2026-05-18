@@ -45,7 +45,7 @@ pub async fn handler(
             .map_err(|e| AppError::Internal(e.into()));
     }
 
-    // ── Normal path: buffer all videos, optionally overlay ────────────────
+    // normal path
     let mut videos = Vec::new();
 
     let main = promoted_video(&state.client, &tweet, body.quality.as_deref()).await?;

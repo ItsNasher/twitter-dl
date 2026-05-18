@@ -12,9 +12,7 @@ use crate::models::TweetRef;
 const BASE_WIDTH: f64 = 600.0;
 const MAX_RENDER_W: i32 = 1280;
 
-// ---------------------------------------------------------------------------
-// Hardware video encoder detection
-// ---------------------------------------------------------------------------
+// video encoder detection
 
 enum VideoEncoder {
     Nvenc,
@@ -25,9 +23,6 @@ enum VideoEncoder {
 
 static BEST_ENCODER: OnceLock<VideoEncoder> = OnceLock::new();
 
-/// Called once at startup from `main.rs` to avoid blocking a Tokio worker.
-/// Uses synchronous `std::process::Command` intentionally — runner MUST be
-/// the main thread or a `spawn_blocking` context.
 pub fn init_encoder() {
     let test_encoder = |enc: &str| -> bool {
         std::process::Command::new("ffmpeg")
@@ -62,35 +57,33 @@ fn encoder_args() -> Vec<String> {
         VideoEncoder::Nvenc => vec![
             "-c:v".into(), "h264_nvenc".into(),
             "-preset".into(), "p4".into(),
-            "-cq".into(), "20".into(),
+            "-cq".into(), "18".into(),
             "-rc".into(), "vbr".into(),
             "-pix_fmt".into(), "yuv420p".into(),
         ],
         VideoEncoder::Amf => vec![
             "-c:v".into(), "h264_amf".into(),
             "-quality".into(), "quality".into(),
-            "-qp_i".into(), "20".into(),
-            "-qp_p".into(), "20".into(),
+            "-qp_i".into(), "18".into(),
+            "-qp_p".into(), "18".into(),
             "-pix_fmt".into(), "yuv420p".into(),
         ],
         VideoEncoder::Qsv => vec![
             "-c:v".into(), "h264_qsv".into(),
             "-preset".into(), "fast".into(),
-            "-global_quality".into(), "20".into(),
+            "-global_quality".into(), "18".into(),
             "-pix_fmt".into(), "yuv420p".into(),
         ],
         VideoEncoder::Libx264 => vec![
             "-c:v".into(), "libx264".into(),
-            "-preset".into(), "ultrafast".into(),
-            "-crf".into(), "26".into(),
+            "-preset".into(), "fast".into(),
+            "-crf".into(), "20".into(),
             "-threads".into(), "0".into(),
         ],
     }
 }
 
-// ---------------------------------------------------------------------------
-// Public entry point
-// ---------------------------------------------------------------------------
+// public entry point
 
 pub async fn apply_tweet_overlay(
     client: &Client,
@@ -105,7 +98,7 @@ pub async fn apply_tweet_overlay(
     std::fs::write(&video_path, &video_bytes)
         .map_err(|e| AppError::Internal(e.into()))?;
 
-    // ── Raw video dimensions + resolution cap ──────────────────────────────
+    // raw dimensions
     let (vid_w_raw, vid_h_raw) = probe_video_dims(&video_path).await?;
 
     let (vid_w, vid_h) = if vid_w_raw > MAX_RENDER_W {
@@ -119,7 +112,7 @@ pub async fn apply_tweet_overlay(
 
     let sf = (vid_w as f64 / BASE_WIDTH).max(0.5);
 
-    // ── Avatar download ────────────────────────────────────────────────────
+    // avatar
     let avatar_src_path = dir.join("avatar_src.jpg");
     let has_avatar = if let Some(ref url) = tweet.avatar_url {
         let hd_url = url.replace("_normal.", "_200x200.");
@@ -129,7 +122,7 @@ pub async fn apply_tweet_overlay(
         false
     };
 
-    // ── Layout constants ───────────────────────────────────────────────────
+    // layout
     let pad_h      = sc(16.0, sf);
     let pad_top    = sc(18.0, sf);
     let ava_size   = sc(42.0, sf);
@@ -147,20 +140,20 @@ pub async fn apply_tweet_overlay(
     let sec_gap    = sc(14.0, sf);
     let footer_pad = sc(14.0, sf);
 
-    // Body text
+    // body text
     let body_clean   = strip_tco(&tweet.text);
     let max_chars    = ((vid_w as f64 - pad_h as f64 * 2.0) / (body_fs as f64 * 0.55)).max(10.0) as usize;
     let wrapped      = word_wrap(&body_clean, max_chars, 5);
     let body_lines   = wrapped.lines().count().max(1) as i32;
     let body_block_h = body_lines * (body_fs + body_lh) - body_lh;
 
-    // Section heights
+    // section heights
     let header_h = pad_top + ava_size + sec_gap;
     let body_h   = body_block_h + sec_gap;
     let top_bar  = header_h + body_h;
     let bot_bar  = sec_gap + footer_fs + footer_pad;
 
-    // Video display area (after horizontal padding)
+    // video display area
     let vid_dw    = vid_w - vid_pad_h * 2;
     let display_h = {
         let raw = vid_h as f64 * vid_dw as f64 / vid_w as f64;
@@ -169,21 +162,18 @@ pub async fn apply_tweet_overlay(
     };
     let total_h = top_bar + display_h + bot_bar;
 
-    // Footer text
+    // footer text
     let likes_str = tweet.likes.map(|n| format_count(n)).unwrap_or_default();
     let has_likes = tweet.likes.is_some() && !likes_str.is_empty();
-    let footer_text = if has_likes {
-        format!("{}  ·  {} Likes", tweet.created_at.trim(), likes_str)
-    } else {
-        tweet.created_at.trim().to_string()
-    };
+    let footer_date  = tweet.created_at.trim().to_string();
+    let footer_likes = if has_likes { format!("{} Likes", likes_str) } else { String::new() };
 
-    // Font path (passed into Python)
+    // font path
     let font_path = find_font()
         .map(|p| p.display().to_string().replace('\\', "/"))
         .unwrap_or_default();
 
-    // ── Generate all assets + both card PNGs in one Python call ───────────
+    // generate all assets
     let card_top_path  = dir.join("card_top.png");
     let card_bot_path  = dir.join("card_bot.png");
     let mask_path      = dir.join("video_mask.png");
@@ -208,7 +198,8 @@ pub async fn apply_tweet_overlay(
         &tweet.display_name,
         &tweet.author,
         &wrapped,
-        &footer_text,
+        &footer_date,
+        &footer_likes,
         // font
         &font_path,
     ).await?;
@@ -228,7 +219,7 @@ pub async fn apply_tweet_overlay(
     // 1. Optional source downscale
     if needs_scale {
         f.push_str(&format!(
-            "[0:v]scale=w={vw}:h={vh}:flags=fast_bilinear[src];",
+            "[0:v]scale=w={vw}:h={vh}:flags=lanczos[src];",
             vw=vid_w, vh=vid_h
         ));
     } else {
@@ -237,7 +228,7 @@ pub async fn apply_tweet_overlay(
 
     // 2. Scale video to padded display area (exact dims to match mask)
     f.push_str(&format!(
-        "[src]scale=w={dw}:h={dh}:flags=fast_bilinear[scaled];",
+        "[src]scale=w={dw}:h={dh}:flags=lanczos[scaled];",
         dw=vid_dw, dh=display_h
     ));
 
@@ -256,16 +247,25 @@ pub async fn apply_tweet_overlay(
         vx=vid_pad_h, tb=top_bar
     ));
 
-    // 6. Overlay top card (contains avatar, name, checkmark, handle, X logo, body text)
-    f.push_str("[with_video][1:v]overlay=x=0:y=0[with_top];");
-
-    // 7. Overlay bottom card (contains heart icon + footer text)
+    // Scale 2× card images back to actual size
     f.push_str(&format!(
-        "[with_top][2:v]overlay=x=0:y={bot_y}[final];",
+        "[1:v]scale=w={vw}:h={tb}:flags=lanczos[top_ds];",
+        vw = vid_w, tb = top_bar
+    ));
+    f.push_str(&format!(
+        "[2:v]scale=w={vw}:h={bb}:flags=lanczos[bot_ds];",
+        vw = vid_w, bb = bot_bar
+    ));
+
+    // 6. Overlay top card
+    f.push_str("[with_video][top_ds]overlay=x=0:y=0[with_top];");
+
+    // 7. Overlay bottom card
+    f.push_str(&format!(
+        "[with_top][bot_ds]overlay=x=0:y={bot_y}[final];",
         bot_y = top_bar + display_h
     ));
 
-    // ── Run ffmpeg ─────────────────────────────────────────────────────────
     let out_path = dir.join("output.mp4");
 
     let mut args: Vec<String> = vec![
@@ -318,9 +318,7 @@ pub async fn apply_tweet_overlay(
     Ok(Bytes::from(result))
 }
 
-// ---------------------------------------------------------------------------
-// Python/Pillow: generate both card PNGs + mask in one script call
-// ---------------------------------------------------------------------------
+// python/pillow
 
 #[allow(clippy::too_many_arguments)]
 async fn generate_cards(
@@ -342,7 +340,8 @@ async fn generate_cards(
     display_name: &str,
     author: &str,
     body: &str,
-    footer_text: &str,
+    footer_date: &str,
+    footer_likes: &str,
     font_path: &str,
 ) -> Result<(), AppError> {
     let av_src_str = avatar_src
@@ -358,31 +357,48 @@ async fn generate_cards(
 import os, math
 from PIL import Image, ImageDraw, ImageFont
 
-# ── Font loading ─────────────────────────────────────────────────────────────
+SSAA = 2  # supersample factor — render cards at 2× then downscale in ffmpeg
+
+# font
 FONT_PATH = r'{font_path}'
 
 def load_font(size):
     if FONT_PATH and os.path.exists(FONT_PATH):
-        try:
-            return ImageFont.truetype(FONT_PATH, size)
-        except Exception:
-            pass
-    # fallback candidates
-    for p in [
-        'C:/Windows/Fonts/segoeui.ttf',
-        'C:/Windows/Fonts/arial.ttf',
+        try: return ImageFont.truetype(FONT_PATH, size)
+        except Exception: pass
+    candidates = [
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
         '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-    ]:
+        'C:/Windows/Fonts/segoeui.ttf',
+        'C:/Windows/Fonts/arial.ttf',
+    ]
+    for p in candidates:
         if os.path.exists(p):
-            try:
-                return ImageFont.truetype(p, size)
-            except Exception:
-                pass
+            try: return ImageFont.truetype(p, size)
+            except Exception: pass
+    # fontconfig last resort — finds whatever the system has for CJK
+    try:
+        import subprocess
+        for lang in ['ja', 'ko', 'zh', '']:
+            query = (':lang=' + lang) if lang else 'NotoSans'
+            r = subprocess.run(
+                ['fc-match', query, '--format=%{{file}}'],
+                capture_output=True, text=True, timeout=3
+            )
+            if r.returncode == 0:
+                p = r.stdout.strip()
+                if p and os.path.exists(p):
+                    try: return ImageFont.truetype(p, size)
+                    except Exception: pass
+    except Exception:
+        pass
     return ImageFont.load_default()
 
-# ── Avatar (circle-cropped) ───────────────────────────────────────────────────
+# avatar
 def make_avatar(size, src_path, out_path):
     if src_path is not None and os.path.exists(src_path):
         try:
@@ -397,7 +413,7 @@ def make_avatar(size, src_path, out_path):
     out.paste(base, mask=mask)
     out.save(out_path, 'PNG')
 
-# ── Checkmark badge ───────────────────────────────────────────────────────────
+# checkmark badge
 def draw_checkmark(canvas, x, y, size):
     d = ImageDraw.Draw(canvas)
     d.ellipse([x, y, x+size-1, y+size-1], fill=(29, 155, 240, 255))
@@ -411,15 +427,31 @@ def draw_checkmark(canvas, x, y, size):
     d.line([pts[0], pts[1]], fill='white', width=lw)
     d.line([pts[1], pts[2]], fill='white', width=lw)
 
-# ── X logo ────────────────────────────────────────────────────────────────────
-def draw_xlogo(canvas, x, y, size):
-    d = ImageDraw.Draw(canvas)
-    m = max(1, round(size * 0.15))
-    lw = max(1, round(size * 0.13))
-    d.line([(x+m, y+m), (x+size-m, y+size-m)], fill=(255,255,255,210), width=lw)
-    d.line([(x+size-m, y+m), (x+m, y+size-m)], fill=(255,255,255,210), width=lw)
+# x logo
+def draw_xlogo(canvas, ox, oy, size):
+    s = size / 24.0
+    def pt(px, py):
+        return (ox + px * s, oy + py * s)
 
-# ── Heart icon ────────────────────────────────────────────────────────────────
+    # Outer silhouette — the full X shape (from the official SVG path on a 24×24 viewbox)
+    outer = [
+        pt(18.244, 2.25),  pt(21.552, 2.25),  pt(14.325, 10.51),
+        pt(22.827, 22.5),  pt(16.17,  22.5),  pt(11.455, 16.307),
+        pt(6.061,  22.5),  pt(2.752,  22.5),  pt(10.032, 14.175),
+        pt(2.752,  3.248), pt(8.844,  3.248),  pt(13.107,  8.886),
+        pt(18.244, 3.248),
+    ]
+    # Inner diagonal quad — the cutout between the two bars
+    inner = [
+        pt(17.083, 20.61), pt(18.916, 20.61),
+        pt(7.084,   4.126), pt(5.117,   4.126),
+    ]
+
+    d = ImageDraw.Draw(canvas)
+    d.polygon(outer, fill=(255, 255, 255, 220))
+    d.polygon(inner, fill=(0, 0, 0, 255))  # black punches out the cutout against the card bg
+
+# heart icon
 def draw_heart(canvas, x, y, size):
     d = ImageDraw.Draw(canvas)
     color = (113, 118, 123, 255)
@@ -437,13 +469,13 @@ def draw_heart(canvas, x, y, size):
     lw = max(1, round(size / 11))
     d.line(poly + [poly[0]], fill=color, width=lw)
 
-# ── Video mask (rounded rectangle, grayscale for alphamerge) ─────────────────
+# video mask
 def make_video_mask(w, h, r, path):
     mask = Image.new('L', (w, h), 0)
     ImageDraw.Draw(mask).rounded_rectangle([0, 0, w-1, h-1], radius=r, fill=255)
     mask.save(path, 'PNG')
 
-# ── Text helpers ──────────────────────────────────────────────────────────────
+# text helpers
 def text_width(font, text):
     try:
         bb = font.getbbox(text)
@@ -456,68 +488,69 @@ def draw_multiline(d, text, font, x, y, color, line_height):
         d.text((x, y), line, font=font, fill=color)
         y += line_height
 
-# ── Card TOP (black bg, full width × top_bar height) ─────────────────────────
+# card top
 def make_card_top(path):
-    W, H = {vid_w}, {top_bar}
+    W, H = {vid_w} * SSAA, {top_bar} * SSAA
     img = Image.new('RGBA', (W, H), (0, 0, 0, 255))
-    d = ImageDraw.Draw(img)
+    d   = ImageDraw.Draw(img)
 
-    font_name   = load_font({name_fs})
-    font_handle = load_font({handle_fs})
-    font_body   = load_font({body_fs})
+    font_name   = load_font({name_fs}   * SSAA)
+    font_handle = load_font({handle_fs} * SSAA)
+    font_body   = load_font({body_fs}   * SSAA)
 
-    # Avatar
     ava_img = Image.open(r'{av_out}').convert('RGBA')
-    img.paste(ava_img, ({pad_h}, {pad_top}), ava_img)
+    img.paste(ava_img, ({pad_h} * SSAA, {pad_top} * SSAA), ava_img)
 
-    # Display name
-    name_x = {pad_h} + {ava_size} + {ava_gap}
-    name_y = {pad_top} + ({ava_size} - {name_fs} - {handle_fs} - 2) // 2
+    name_x = ({pad_h} + {ava_size} + {ava_gap}) * SSAA
+    name_y = ({pad_top} + ({ava_size} - {name_fs} - {handle_fs} - 2) // 2) * SSAA
     d.text((name_x, name_y), '{display_name}', font=font_name, fill=(255,255,255,255))
 
-    # Checkmark — placed right after display name
-    name_w = text_width(font_name, '{display_name}')
-    check_x = name_x + name_w + 3
-    check_y = name_y + ({name_fs} - {check_sz}) // 2
-    draw_checkmark(img, check_x, check_y, {check_sz})
+    name_w  = text_width(font_name, '{display_name}')
+    check_x = name_x + name_w + 3 * SSAA
+    check_y = name_y + ({name_fs} * SSAA - {check_sz} * SSAA) // 2 + round({name_fs} * SSAA * 0.12)
+    draw_checkmark(img, check_x, check_y, {check_sz} * SSAA)
 
-    # @handle
-    handle_y = name_y + {name_fs} + 3
+    handle_y = name_y + {name_fs} * SSAA + 3 * SSAA
     d.text((name_x, handle_y), '@{author}', font=font_handle, fill=(113,118,123,255))
 
-    # X logo (top right)
-    xlogo_x = W - {pad_h} - {xlogo_sz}
-    xlogo_y = {pad_top} + ({ava_size} - {xlogo_sz}) // 2
-    draw_xlogo(img, xlogo_x, xlogo_y, {xlogo_sz})
+    xlogo_x = W - ({pad_h} + {xlogo_sz}) * SSAA
+    xlogo_y = ({pad_top} + ({ava_size} - {xlogo_sz}) // 2) * SSAA
+    draw_xlogo(img, xlogo_x, xlogo_y, {xlogo_sz} * SSAA)
 
-    # Body text (multi-line)
-    body_y = {header_h}
-    lh = {body_fs} + {body_lh}
-    draw_multiline(d, '{body}', font_body, {pad_h}, body_y, (255,255,255,255), lh)
+    body_y = {header_h} * SSAA
+    lh     = ({body_fs} + {body_lh}) * SSAA
+    draw_multiline(d, '{body}', font_body, {pad_h} * SSAA, body_y, (255,255,255,255), lh)
 
     img.save(path, 'PNG')
 
-# ── Card BOTTOM (black bg, full width × bot_bar height) ──────────────────────
+# card bottom
 def make_card_bot(path):
-    W, H = {vid_w}, {bot_bar}
-    img = Image.new('RGBA', (W, H), (0, 0, 0, 255))
+    W, H = {vid_w} * SSAA, {bot_bar} * SSAA
+    img  = Image.new('RGBA', (W, H), (0, 0, 0, 255))
+    font_footer = load_font({footer_fs} * SSAA)
+    d    = ImageDraw.Draw(img)
+    text_y = {sec_gap} * SSAA
+    cur_x  = {pad_h}   * SSAA
 
-    font_footer = load_font({footer_fs})
+    date_str  = '{footer_date}'
+    likes_str = '{footer_likes}'
 
-    # Heart icon
-    heart_y = {sec_gap} + ({footer_fs} - {heart_sz}) // 2
-    draw_heart(img, {pad_h}, heart_y, {heart_sz})
+    d.text((cur_x, text_y), date_str, font=font_footer, fill=(113,118,123,255))
+    cur_x += text_width(font_footer, date_str)
 
-    # Footer text (date · likes)
-    d = ImageDraw.Draw(img)
-    text_x = {pad_h} + {heart_sz} + 4
-    text_y = {sec_gap}
-    d.text((text_x, text_y), '{footer_text}', font=font_footer, fill=(113,118,123,255))
+    if likes_str:
+        sep = '  \u00b7  '
+        d.text((cur_x, text_y), sep, font=font_footer, fill=(113,118,123,255))
+        cur_x += text_width(font_footer, sep)
+        heart_y_pos = {sec_gap} * SSAA + ({footer_fs} * SSAA - {heart_sz} * SSAA) // 2
+        draw_heart(img, cur_x, heart_y_pos, {heart_sz} * SSAA)
+        cur_x += {heart_sz} * SSAA + 4 * SSAA
+        d.text((cur_x, text_y), likes_str, font=font_footer, fill=(113,118,123,255))
 
     img.save(path, 'PNG')
 
-# ── Run everything ────────────────────────────────────────────────────────────
-make_avatar({ava_size}, {av_src}, r'{av_out}')
+# run everything
+make_avatar({ava_size} * SSAA, {av_src}, r'{av_out}')
 make_card_top(r'{card_top}')
 make_card_bot(r'{card_bot}')
 make_video_mask({vid_dw}, {display_h}, {vid_corner}, r'{mask}')
@@ -547,7 +580,8 @@ print('ok')
         display_name = py_str(display_name),
         author       = py_str(author),
         body         = py_str(body),
-        footer_text  = py_str(&footer_text),
+        footer_date  = py_str(&footer_date),
+        footer_likes = py_str(&footer_likes),
         av_src       = av_src_str,
         av_out       = avatar_out_path.display().to_string().replace('\\', "/"),
         card_top     = card_top_path.display().to_string().replace('\\', "/"),
@@ -586,9 +620,7 @@ print('ok')
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// helpers
 
 async fn probe_video_dims(path: &Path) -> Result<(i32, i32), AppError> {
     let output = Command::new("ffprobe")

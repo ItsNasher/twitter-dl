@@ -218,8 +218,7 @@ pub async fn build_tweet_info(
         fetch_quoted_tweet(client, tweet),
     );
 
-    // If the tweet is a reply and the parent has video, promote the parent
-    // as the primary content and move the original reply into in_reply_to.
+    // if the tweet is a reply and the parent has video, promote the parent
     if tweet.in_reply_to_status_id_str.is_some() {
         if let Some(ref parent) = in_reply_to {
             if !parent.variants.is_empty() {

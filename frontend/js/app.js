@@ -371,7 +371,7 @@ async function handleDownload() {
     renderCard:    document.getElementById("optCaptions").checked,
   };
 
-  // When quote is OFF, download the quoted (inner) tweet directly
+  // When quote is off, download the quoted tweet directly
   if (!opts.includeQuote && currentTweetData.quoted_tweet?.id_str) {
     url = `https://x.com/i/web/status/${currentTweetData.quoted_tweet.id_str}`;
   }
@@ -387,11 +387,10 @@ async function handleDownload() {
   fillEl.classList.remove("indeterminate");
 
   try {
-    showLoading("preparing download...");
+    showLoading(opts.renderCard ? "rendering card overlay…" : "preparing download…");
 
     const blob = await fetchVideoStream(url, selectedQuality, opts, (pct) => {
       if (pct < 0) {
-        // no Content-Length — indeterminate
         fillEl.classList.add("indeterminate");
       } else {
         fillEl.classList.remove("indeterminate");
@@ -442,7 +441,7 @@ function renderResult(data) {
     document.getElementById("replyTimestamp").textContent   = r.created_at || "";
   }
 
-  // quoted tweet card content (always rendered, visibility controlled by toggle)
+  // quoted tweet card content
   if (data.quoted_tweet) {
     const q = data.quoted_tweet;
     const qClean = (q.text || "").replace(/\s*https:\/\/t\.co\/\S+/g, "").trim();
@@ -455,7 +454,7 @@ function renderResult(data) {
     document.getElementById("quoteText").textContent        = qClean;
   }
 
-  // reset states — fully tear down all players before new data
+  // reset states
   document.getElementById("optCaptions").checked          = false;
   document.getElementById("replyContext").style.display   = "none";
   document.getElementById("tweetMediaGroup").style.display = "none";
@@ -468,7 +467,6 @@ function renderResult(data) {
   setOptionEnabled("optQuotedRow", "optQuoted", "badgeQuoted", !!data.quoted_tweet);
   setOptionEnabled("optReplyRow",  "optReply",  "badgeReply",  !!data.in_reply_to);
 
-  // Don't auto-select — user opts in
   if (data.quoted_tweet) {
     document.getElementById("optQuoted").checked = false;
   }
@@ -476,7 +474,7 @@ function renderResult(data) {
     document.getElementById("optReply").checked = false;
   }
 
-  // Initial display respects the quote toggle (off → inner tweet, on → outer tweet)
+  // initial display respects quote
   switchToTweet(data.quoted_tweet || data);
 }
 

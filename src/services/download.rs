@@ -12,8 +12,7 @@ use crate::services::twitter::{
 };
 use crate::services::video::{download_mp4, pick_variant};
 
-/// Fast path: resolve just the download URL (handles reply promotion).
-/// Avoids downloading the full video — used for streaming responses.
+// just the download url
 pub async fn promoted_video_url(
     client: &Client,
     tweet: &SyndicationTweet,
@@ -44,9 +43,8 @@ pub async fn main_video(
     download_mp4(client, variant).await
 }
 
-/// Gets the video to serve as the main download.
-/// If the given tweet is a reply (has in_reply_to_status_id_str),
-/// fetches the parent tweet's video instead.
+// if the given tweet is a reply (has in_reply_to_status_id_str),
+// fetches the parent tweet's video instead.
 pub async fn promoted_video(
     client: &Client,
     tweet: &SyndicationTweet,
@@ -65,8 +63,8 @@ pub async fn promoted_video(
     main_video(client, tweet, quality).await
 }
 
-/// If the tweet is a reply, tries to get the original reply's video.
-/// Returns None if the reply has no video or if this isn't a reply.
+// if the tweet is a reply, tries to get the original reply's video.
+// Returns None if the reply has no video or if this isn't a reply.
 pub async fn original_reply_video(
     client: &Client,
     tweet: &SyndicationTweet,
