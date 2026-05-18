@@ -12,6 +12,28 @@ use crate::services::twitter::{
 };
 use crate::services::video::{download_mp4, pick_variant};
 
+/// Fast path: resolve just the download URL (handles reply promotion).
+/// Avoids downloading the full video — used for streaming responses.
+pub async fn promoted_video_url(
+    client: &Client,
+    tweet: &SyndicationTweet,
+    quality: Option<&str>,
+) -> Result<String, AppError> {
+    if parse_variants(tweet).is_err() {
+        if let Some(parent_id) = &tweet.in_reply_to_status_id_str {
+            if let Ok(parent) = fetch_tweet(client, parent_id).await {
+                if let Ok(variants) = parse_variants(&parent) {
+                    let variant = pick_variant(&variants, quality);
+                    return Ok(variant.url.clone());
+                }
+            }
+        }
+    }
+    let variants = parse_variants(tweet)?;
+    let variant = pick_variant(&variants, quality);
+    Ok(variant.url.clone())
+}
+
 pub async fn main_video(
     client: &Client,
     tweet: &SyndicationTweet,
@@ -30,11 +52,14 @@ pub async fn promoted_video(
     tweet: &SyndicationTweet,
     quality: Option<&str>,
 ) -> Result<Bytes, AppError> {
-    if let Some(parent_id) = &tweet.in_reply_to_status_id_str {
-        if let Ok(parent) = fetch_tweet(client, parent_id).await {
-            let variants = parse_variants(&parent)?;
-            let variant = pick_variant(&variants, quality);
-            return download_mp4(client, variant).await;
+    if parse_variants(tweet).is_err() {
+        if let Some(parent_id) = &tweet.in_reply_to_status_id_str {
+            if let Ok(parent) = fetch_tweet(client, parent_id).await {
+                if let Ok(variants) = parse_variants(&parent) {
+                    let variant = pick_variant(&variants, quality);
+                    return download_mp4(client, variant).await;
+                }
+            }
         }
     }
     main_video(client, tweet, quality).await

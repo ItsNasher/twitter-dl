@@ -19,6 +19,9 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use crate::models::SyndicationTweet;
+use crate::services::overlay;
+
 #[derive(Clone)]
 pub struct RateLimiter {
     inner: Arc<Mutex<HashMap<String, Vec<Instant>>>>,
@@ -49,6 +52,7 @@ impl RateLimiter {
 pub struct AppState {
     pub client: Client,
     pub rate_limiter: RateLimiter,
+    pub tweet_cache: Arc<Mutex<HashMap<String, (SyndicationTweet, Instant)>>>,
 }
 
 #[tokio::main]
@@ -72,6 +76,7 @@ async fn main() {
     let state = AppState {
         client,
         rate_limiter: RateLimiter::new(),
+        tweet_cache: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let cors = if let Ok(origin) = std::env::var("CORS_ORIGIN") {
@@ -105,6 +110,10 @@ async fn main() {
     let addr: SocketAddr = format!("{}:{}", host, port)
         .parse()
         .expect("invalid address");
+
+    // Eager encoder detection — runs synchronously before the server starts
+    // so it never blocks a Tokio worker thread at request time.
+    overlay::init_encoder();
 
     tracing::info!("twdl backend listening on http://{}", addr);
 

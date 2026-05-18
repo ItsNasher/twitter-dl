@@ -27,7 +27,7 @@ pub struct TweetInfo {
     pub likes: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SyndicationTweet {
     #[serde(default)]
     pub user: SyndicationUser,
@@ -69,12 +69,12 @@ impl SyndicationTweet {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct MediaEntities {
     pub media: Vec<MediaItem>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct EntityBlock {
     #[serde(default)]
     pub media: Vec<serde_json::Value>,
@@ -82,7 +82,7 @@ pub struct EntityBlock {
 
 pub type ExtendedEntities = MediaEntities;
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct SyndicationUser {
     pub screen_name: String,
     #[serde(default)]
@@ -91,20 +91,20 @@ pub struct SyndicationUser {
     pub profile_image_url_https: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct MediaItem {
     #[serde(rename = "type", alias = "mediaType", default)]
     pub media_type: String,
     pub video_info: Option<VideoInfo>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct VideoInfo {
     pub variants: Vec<RawVariant>,
     pub subtitles: Option<Vec<SubtitleTrack>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RawVariant {
     #[serde(rename = "content_type", alias = "contentType", default)]
     pub content_type: String,
@@ -118,7 +118,7 @@ pub struct SubtitleTrack {
     pub language: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SyndicationQuotedTweet {
     pub user: SyndicationUser,
     #[serde(alias = "text", default)]

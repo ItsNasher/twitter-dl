@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
 use anyhow::Context;
 use reqwest::Client;
 use regex::Regex;
@@ -94,6 +98,24 @@ pub fn tweet_ref_from(tweet: &SyndicationTweet) -> TweetRef {
         created_at: format_date(&tweet.created_at),
         id_str: tweet.id_str.clone(),
     }
+}
+
+pub async fn fetch_tweet_cached(
+    client: &Client,
+    cache: &Arc<Mutex<HashMap<String, (SyndicationTweet, Instant)>>>,
+    tweet_id: &str,
+) -> Result<SyndicationTweet, AppError> {
+    {
+        let map = cache.lock().unwrap();
+        if let Some((tweet, fetched_at)) = map.get(tweet_id) {
+            if fetched_at.elapsed().as_secs() < 60 {
+                return Ok(tweet.clone());
+            }
+        }
+    }
+    let tweet = fetch_tweet(client, tweet_id).await?;
+    cache.lock().unwrap().insert(tweet_id.to_string(), (tweet.clone(), Instant::now()));
+    Ok(tweet)
 }
 
 pub async fn fetch_reply_parent(

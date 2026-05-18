@@ -5,13 +5,16 @@ use axum::{
     response::Response,
     Json,
 };
+use futures::StreamExt;
 
 use crate::{
     error::AppError,
     models::DownloadRequest,
-    services::download::{merge_mp4s, original_reply_video, promoted_video, quoted_video},
+    services::download::{
+        merge_mp4s, original_reply_video, promoted_video, promoted_video_url, quoted_video,
+    },
     services::overlay,
-    services::twitter::{extract_tweet_id, fetch_tweet, tweet_ref_from},
+    services::twitter::{extract_tweet_id, fetch_tweet_cached, tweet_ref_from},
     AppState,
 };
 
@@ -20,8 +23,29 @@ pub async fn handler(
     Json(body): Json<DownloadRequest>,
 ) -> Result<Response, AppError> {
     let tweet_id = extract_tweet_id(&body.url)?;
-    let tweet = fetch_tweet(&state.client, &tweet_id).await?;
+    let tweet = fetch_tweet_cached(&state.client, &state.tweet_cache, &tweet_id).await?;
 
+    let filename = format!("{}_{}.mp4", tweet.user.screen_name, tweet_id);
+
+    // ── Fast path: single video, no overlay → stream from Twitter CDN ─────
+    if !body.render_card && !body.include_quote && !body.include_reply {
+        let url = promoted_video_url(&state.client, &tweet, body.quality.as_deref()).await?;
+        let resp = state.client.get(&url).send().await?;
+        let stream = resp.bytes_stream().map(|r| r.map_err(|e| anyhow::anyhow!(e)));
+        let body = Body::from_stream(stream);
+
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "video/mp4")
+            .header(
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", filename),
+            )
+            .body(body)
+            .map_err(|e| AppError::Internal(e.into()));
+    }
+
+    // ── Normal path: buffer all videos, optionally overlay ────────────────
     let mut videos = Vec::new();
 
     let main = promoted_video(&state.client, &tweet, body.quality.as_deref()).await?;
@@ -47,8 +71,6 @@ pub async fn handler(
     } else {
         merged
     };
-
-    let filename = format!("{}_{}.mp4", tweet.user.screen_name, tweet_id);
 
     let response = Response::builder()
         .status(StatusCode::OK)

@@ -10,7 +10,7 @@ use crate::{
     error::AppError,
     models::DownloadRequest,
     services::download::{extract_audio, merge_mp4s, original_reply_video, promoted_video, quoted_video},
-    services::twitter::{extract_tweet_id, fetch_tweet},
+    services::twitter::{extract_tweet_id, fetch_tweet_cached},
     AppState,
 };
 
@@ -19,7 +19,7 @@ pub async fn handler(
     Json(body): Json<DownloadRequest>,
 ) -> Result<Response, AppError> {
     let tweet_id = extract_tweet_id(&body.url)?;
-    let tweet = fetch_tweet(&state.client, &tweet_id).await?;
+    let tweet = fetch_tweet_cached(&state.client, &state.tweet_cache, &tweet_id).await?;
 
     let mut videos = Vec::new();
 

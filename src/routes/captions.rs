@@ -12,7 +12,7 @@ use crate::{
     services::download::{
         merge_srt_captions, original_reply_captions, promoted_captions, quoted_captions,
     },
-    services::twitter::{extract_tweet_id, fetch_tweet},
+    services::twitter::{extract_tweet_id, fetch_tweet_cached},
     AppState,
 };
 
@@ -21,7 +21,7 @@ pub async fn handler(
     Json(body): Json<DownloadRequest>,
 ) -> Result<Response, AppError> {
     let tweet_id = extract_tweet_id(&body.url)?;
-    let tweet = fetch_tweet(&state.client, &tweet_id).await?;
+    let tweet = fetch_tweet_cached(&state.client, &state.tweet_cache, &tweet_id).await?;
 
     let mut captions = Vec::new();
 
