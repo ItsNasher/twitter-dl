@@ -132,18 +132,6 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: -0.02em;
 }
 
-.logo-badge {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--accent);
-  background: var(--accent-glow);
-  border: 1px solid rgba(74, 140, 247, 0.25);
-  border-radius: 4px;
-  padding: 1px 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
 
 .nav-links {
   display: flex;
