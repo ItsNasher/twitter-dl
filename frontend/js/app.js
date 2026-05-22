@@ -387,7 +387,10 @@ async function handleDownload() {
   fillEl.classList.remove("indeterminate");
 
   try {
-    showLoading(opts.renderCard ? "rendering card overlay…" : "preparing download…");
+    const loadMsg = opts.renderCard
+  ? (opts.includeReply ? "rendering overlay + reply…" : "rendering card overlay…")
+  : "preparing download…";
+showLoading(loadMsg);
 
     const blob = await fetchVideoStream(url, selectedQuality, opts, (pct) => {
       if (pct < 0) {

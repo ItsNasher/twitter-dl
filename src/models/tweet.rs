@@ -51,6 +51,8 @@ pub struct SyndicationTweet {
     pub id_str: Option<String>,
     #[serde(default, alias = "favorite_count")]
     pub likes: Option<u64>,
+    #[serde(default)]
+    pub parent: Option<Box<SyndicationTweet>>,
 }
 
 impl SyndicationTweet {

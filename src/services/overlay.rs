@@ -90,7 +90,7 @@ pub async fn apply_tweet_overlay(
     video_bytes: Bytes,
     tweet: &TweetRef,
     tweet_id: &str,
-) -> Result<Bytes, AppError> {
+) -> Result<(Bytes, i32, i32), AppError> {
     let dir = std::env::temp_dir().join(format!("twdl_overlay_{}", tweet_id));
     let _ = std::fs::create_dir_all(&dir);
 
@@ -315,10 +315,273 @@ pub async fn apply_tweet_overlay(
     }
 
     let _ = std::fs::remove_dir_all(&dir);
+    Ok((Bytes::from(result), vid_w, total_h))
+}
+
+/// Single-card overlay — wraps apply_tweet_overlay without returning
+/// dimensions.  Used when only "show captions" is checked.
+pub async fn apply_caption_card(
+    client: &Client,
+    tweet: &TweetRef,
+    video_bytes: Bytes,
+) -> Result<Bytes, AppError> {
+    let (bytes, _, _) = apply_tweet_overlay(client, video_bytes, tweet, "caption_card").await?;
+    Ok(bytes)
+}
+
+/// Combined overlay — renders a top tweet card and/or a bottom tweet card
+/// around the video in a single frame.  Avoids the codec-mismatch problems
+/// of separate clips + concat.
+pub async fn apply_combined_overlays(
+    client: &Client,
+    top: Option<&TweetRef>,
+    bottom: Option<&TweetRef>,
+    video_bytes: Bytes,
+    width: i32,
+    tweet_id: &str,
+) -> Result<Bytes, AppError> {
+    let dir = std::env::temp_dir().join(format!("twdl_combined_{}", tweet_id));
+    let _ = std::fs::create_dir_all(&dir);
+
+    let video_path = dir.join("video.mp4");
+    std::fs::write(&video_path, &video_bytes)
+        .map_err(|e| AppError::Internal(e.into()))?;
+
+    let font_path = find_font()
+        .map(|p| p.display().to_string().replace('\\', "/"))
+        .unwrap_or_default();
+
+    // ── probe & scale ────────────────────────────────────────────────
+    let (vid_w_raw, vid_h_raw) = probe_video_dims(&video_path).await?;
+    let (vid_w, vid_h) = if vid_w_raw > width {
+        let h = ((vid_h_raw as f64 * width as f64 / vid_w_raw as f64) / 2.0).round() as i32 * 2;
+        (width, h)
+    } else {
+        let h = if vid_h_raw % 2 == 0 { vid_h_raw } else { vid_h_raw + 1 };
+        (vid_w_raw, h)
+    };
+    let needs_scale = vid_w != vid_w_raw || vid_h != vid_h_raw;
+
+    let sf = (vid_w as f64 / BASE_WIDTH).max(0.5);
+
+    // ── layout constants ─────────────────────────────────────────────
+    let pad_h      = sc(16.0, sf);
+    let pad_top    = sc(18.0, sf);
+    let ava_size   = sc(42.0, sf);
+    let ava_gap    = sc(10.0, sf);
+    let name_fs    = sc(15.0, sf);
+    let handle_fs  = sc(13.0, sf);
+    let check_sz   = sc(16.0, sf);
+    let xlogo_sz   = sc(20.0, sf);
+    let body_fs    = sc(17.0, sf);
+    let body_lh    = sc(6.0, sf);
+    let footer_fs  = sc(13.0, sf);
+    let heart_sz   = sc(14.0, sf);
+    let vid_pad_h  = sc(24.0, sf);
+    let vid_corner = sc(20.0, sf);
+    let sec_gap    = sc(14.0, sf);
+    let footer_pad = sc(14.0, sf);
+    let vid_dw     = vid_w - vid_pad_h * 2;
+    let header_h   = pad_top + ava_size + sec_gap;
+
+    // display area
+    let display_h = {
+        let raw = vid_h as f64 * vid_dw as f64 / vid_w as f64;
+        let r = raw.round() as i32;
+        if r % 2 == 0 { r } else { r + 1 }
+    };
+
+    // ── top card height (no footer) ──────────────────────────────────
+    let top_body = top.map(|t| strip_tco(&t.text)).unwrap_or_default();
+    let top_wrapped = top.map(|_| {
+        let m = ((vid_w as f64 - pad_h as f64 * 2.0) / (body_fs as f64 * 0.55)).max(10.0) as usize;
+        word_wrap(&top_body, m, 5)
+    }).unwrap_or_default();
+    let top_lines = top.map(|_| top_wrapped.lines().count().max(1) as i32).unwrap_or(0);
+    let top_block = top_lines * (body_fs + body_lh) - body_lh;
+    let top_bar = if top.is_some() { header_h + top_block + sec_gap } else { 0 };
+
+    // ── bottom card height (with footer) ─────────────────────────────
+    let bot_body = bottom.map(|b| strip_tco(&b.text)).unwrap_or_default();
+    let bot_wrapped = bottom.map(|_| {
+        let m = ((vid_w as f64 - pad_h as f64 * 2.0) / (body_fs as f64 * 0.55)).max(10.0) as usize;
+        word_wrap(&bot_body, m, 8)
+    }).unwrap_or_default();
+    let bot_lines = bottom.map(|_| bot_wrapped.lines().count().max(1) as i32).unwrap_or(0);
+    let bot_block = bot_lines * (body_fs + body_lh) - body_lh;
+    let bot_bar = if bottom.is_some() { header_h + bot_block + sec_gap + footer_fs + footer_pad } else { 0 };
+    let total_h = top_bar + display_h + bot_bar;
+
+    // ── download avatars ─────────────────────────────────────────────
+    async fn dl_av(client: &Client, tref: &TweetRef, dst: &Path) -> bool {
+        if let Some(ref url) = tref.avatar_url {
+            let hd = url.replace("_normal.", "_200x200.");
+            let ok = download_file(client, &hd, dst).await.is_ok();
+            if !ok { download_file(client, url, dst).await.is_ok() } else { true }
+        } else { false }
+    }
+
+    let top_av_src = dir.join("top_av_src.jpg");
+    let top_av_ok = if let Some(t) = top { dl_av(client, t, &top_av_src).await } else { false };
+
+    let bot_av_src = dir.join("bot_av_src.jpg");
+    let bot_av_ok = if let Some(b) = bottom { dl_av(client, b, &bot_av_src).await } else { false };
+
+    // ── generate top card (card_top.png) + mask (mk.png) ─────────────
+    let top_card = dir.join("ct.png");
+    let cb_dummy = dir.join("cb_dummy.png");
+    let mask_img = dir.join("mk.png");
+    let top_av_out = dir.join("av_out.png");
+
+    if let Some(t) = top {
+        let ls = t.likes.map(|n| format_count(n)).unwrap_or_default();
+        let hl = t.likes.is_some() && !ls.is_empty();
+        generate_cards(
+            &dir, &top_card, &cb_dummy, &mask_img, &top_av_out,
+            if top_av_ok { Some(&top_av_src) } else { None },
+            vid_w, top_bar, 0, vid_dw, display_h, vid_corner,
+            pad_h, pad_top, ava_size, ava_gap,
+            name_fs, handle_fs, check_sz, xlogo_sz,
+            body_fs, body_lh, footer_fs, heart_sz,
+            sec_gap, header_h,
+            &t.display_name, &t.author, &top_wrapped,
+            &t.created_at.trim(),
+            &if hl { format!("{} Likes", ls) } else { String::new() },
+            &font_path,
+        ).await?;
+    }
+
+    // ── generate bottom card (bot_ct.png) ────────────────────────────
+    let bot_card = dir.join("bot_ct.png");
+    let bot_av_out = dir.join("bot_av_out.png");
+
+    if let Some(b) = bottom {
+        let ls = b.likes.map(|n| format_count(n)).unwrap_or_default();
+        let hl = b.likes.is_some() && !ls.is_empty();
+        let dt = b.created_at.trim().to_string();
+        let lk = if hl { format!("{} Likes", ls) } else { String::new() };
+
+        generate_reply_card(
+            &dir, &bot_card, &bot_av_out,
+            if bot_av_ok { Some(&bot_av_src) } else { None },
+            vid_w, bot_bar,
+            pad_h, pad_top, ava_size, ava_gap,
+            name_fs, handle_fs, check_sz, xlogo_sz,
+            body_fs, body_lh, footer_fs, heart_sz,
+            sec_gap, header_h, bot_block,
+            &b.display_name, &b.author, &bot_wrapped,
+            &dt, &lk, &font_path,
+        ).await?;
+    }
+
+    // ── compute input layout for ffmpeg ──────────────────────────────
+    // input 0: video
+    // input 1: top_card (if top)
+    // input 2: bot_card (if bottom)
+    // input N: mask (always last)
+    let has_top = top.is_some();
+    let has_bot = bottom.is_some();
+    let n_card = (if has_top { 1 } else { 0 }) + (if has_bot { 1 } else { 0 });
+    let mask_idx = 1 + n_card;
+    let top_idx  = if has_top { Some(1) } else { None };
+    let bot_idx  = if has_bot { Some(if has_top { 2 } else { 1 }) } else { None };
+
+    // ── filter_complex ───────────────────────────────────────────────
+    let mut fc = String::new();
+
+    if needs_scale {
+        fc.push_str(&format!("[0:v]scale=w={}:h={}:flags=lanczos[src];", vid_w, vid_h));
+    } else {
+        fc.push_str("[0:v]copy[src];");
+    }
+    fc.push_str(&format!("[src]scale=w={}:h={}:flags=lanczos[scaled];", vid_dw, display_h));
+    fc.push_str(&format!("[scaled][{}:v]alphamerge[rounded];", mask_idx));
+    fc.push_str(&format!("color=c=black:s={}x{}[bg];", vid_w, total_h));
+
+    let vid_y = top_bar;
+    fc.push_str(&format!("[bg][rounded]overlay=x={}:y={}[mid];", vid_pad_h, vid_y));
+
+    // overlay top card
+    if let Some(ti) = top_idx {
+        fc.push_str(&format!("[{}:v]scale=w={}:h={}:flags=lanczos[tds];", ti, vid_w, top_bar));
+        fc.push_str("[mid][tds]overlay=x=0:y=0[after_top];");
+    }
+    let before_bot = if has_top { "after_top" } else { "mid" };
+
+    // overlay bottom card
+    if let Some(bi) = bot_idx {
+        fc.push_str(&format!("[{}:v]scale=w={}:h={}:flags=lanczos[bds];", bi, vid_w, bot_bar));
+        fc.push_str(&format!("[{}][bds]overlay=x=0:y={}[final];", before_bot, vid_y + display_h));
+    } else {
+        fc.push_str(&format!("[{}]copy[final];", before_bot));
+    }
+
+    // ── ffmpeg ───────────────────────────────────────────────────────
+    let out_path = dir.join("output.mp4");
+    let mut args: Vec<String> = vec!["-y".into(), "-i".into(), video_path.to_str().unwrap().to_string()];
+    if has_top { args.push("-i".into()); args.push(top_card.to_str().unwrap().to_string()); }
+    if has_bot { args.push("-i".into()); args.push(bot_card.to_str().unwrap().to_string()); }
+    args.push("-i".into()); args.push(mask_img.to_str().unwrap().to_string());
+
+    args.push("-filter_complex".into()); args.push(fc);
+    args.push("-map".into()); args.push("[final]".into());
+    args.push("-map".into()); args.push("0:a?".into());
+
+    let mut enc = encoder_args();
+    args.append(&mut enc);
+    args.extend([
+        "-c:a".into(), "copy".into(),
+        "-movflags".into(), "+faststart".into(),
+        "-shortest".into(),
+        out_path.to_str().unwrap().to_string(),
+    ]);
+
+    let child = Command::new("ffmpeg")
+        .args(&args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| AppError::Ffmpeg(format!("spawn ffmpeg: {}", e)))?;
+
+    let output = child.wait_with_output().await
+        .map_err(|e| AppError::Ffmpeg(format!("ffmpeg wait: {}", e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::Ffmpeg(format!("combined overlay:\n{}", stderr)));
+    }
+
+    let result = std::fs::read(&out_path).map_err(|e| AppError::Internal(e.into()))?;
+    let _ = std::fs::remove_dir_all(&dir);
     Ok(Bytes::from(result))
 }
 
 // python/pillow
+
+/// Locate the Python executable.
+///
+/// On Windows the App Execution Alias for `python` can redirect to the
+/// Microsoft Store even when a real Python is installed.  We try the
+/// `%LOCALAPPDATA%\Programs\Python\Python3*` layout first to bypass the alias.
+async fn find_python() -> Result<String, AppError> {
+    if let Ok(dir) = std::env::var("LOCALAPPDATA") {
+        let py_root = Path::new(&dir).join("Programs").join("Python");
+        if let Ok(entries) = std::fs::read_dir(&py_root) {
+            let mut candidates: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_str().is_some_and(|n| n.starts_with("Python3")))
+                .collect();
+            candidates.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+            for cand in candidates {
+                let exe = cand.path().join("python.exe");
+                if exe.exists() {
+                    return Ok(exe.to_str().unwrap().to_string());
+                }
+            }
+        }
+    }
+    Ok("python".to_string())
+}
 
 #[allow(clippy::too_many_arguments)]
 async fn generate_cards(
@@ -563,7 +826,8 @@ def make_card_bot(path):
 # run everything
 make_avatar({ava_size} * SSAA, {av_src}, r'{av_out}')
 make_card_top(r'{card_top}')
-make_card_bot(r'{card_bot}')
+if {bot_bar} > 0:
+    make_card_bot(r'{card_bot}')
 make_video_mask({vid_dw}, {display_h}, {vid_corner}, r'{mask}')
 print('ok')
 "#,
@@ -604,6 +868,8 @@ print('ok')
     std::fs::write(&script_path, script.as_bytes())
         .map_err(|e| AppError::Internal(e.into()))?;
 
+    let python_exe = find_python().await?;
+
     let run = |cmd: &str| {
         let s = script_path.to_str().unwrap().to_string();
         let c = cmd.to_string();
@@ -617,15 +883,273 @@ print('ok')
         }
     };
 
-    let out = match run("python").await {
-        Ok(o) if o.status.success() => o,
-        _ => run("python3").await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("python/python3 not found: {}", e)))?,
-    };
+    let out = run(&python_exe).await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("python not found: {}", e)))?;
 
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         return Err(AppError::Internal(anyhow::anyhow!("card generation failed:\n{}", stderr)));
+    }
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn generate_reply_card(
+    dir: &Path,
+    card_out_path: &Path,
+    av_circle_path: &Path,
+    avatar_src: Option<&Path>,
+    vid_w: i32, card_h: i32,
+    pad_h: i32, pad_top: i32, ava_size: i32, ava_gap: i32,
+    name_fs: i32, handle_fs: i32, check_sz: i32, xlogo_sz: i32,
+    body_fs: i32, body_lh: i32, footer_fs: i32, heart_sz: i32,
+    sec_gap: i32, header_h: i32, body_block_h: i32,
+    display_name: &str, author: &str, body: &str,
+    footer_date: &str, footer_likes: &str,
+    font_path: &str,
+) -> Result<(), AppError> {
+    let av_src_str = avatar_src
+        .map(|p| format!("r'{}'", p.display().to_string().replace('\\', "/")))
+        .unwrap_or_else(|| "None".to_string());
+
+    let py_str = |s: &str| -> String {
+        s.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n")
+    };
+
+    let script = format!(
+        r#"
+import os, math
+from PIL import Image, ImageDraw, ImageFont
+
+SSAA = 2
+
+FONT_PATH = r'{font_path}'
+
+def load_font(size):
+    if FONT_PATH and os.path.exists(FONT_PATH):
+        try: return ImageFont.truetype(FONT_PATH, size)
+        except Exception: pass
+    candidates = [
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        'C:/Windows/Fonts/segoeui.ttf',
+        'C:/Windows/Fonts/arial.ttf',
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            try: return ImageFont.truetype(p, size)
+            except Exception: pass
+    try:
+        import subprocess
+        for lang in ['ja', 'ko', 'zh', '']:
+            query = (':lang=' + lang) if lang else 'NotoSans'
+            r = subprocess.run(
+                ['fc-match', query, '--format=%{{file}}'],
+                capture_output=True, text=True, timeout=3
+            )
+            if r.returncode == 0:
+                p = r.stdout.strip()
+                if p and os.path.exists(p):
+                    try: return ImageFont.truetype(p, size)
+                    except Exception: pass
+    except Exception:
+        pass
+    return ImageFont.load_default()
+
+def make_avatar(size, src_path, out_path):
+    if src_path is not None and os.path.exists(src_path):
+        try:
+            base = Image.open(src_path).convert('RGBA').resize((size, size), Image.LANCZOS)
+        except Exception:
+            base = Image.new('RGBA', (size, size), (29, 34, 48, 255))
+    else:
+        base = Image.new('RGBA', (size, size), (29, 34, 48, 255))
+    mask = Image.new('L', (size, size), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, size-1, size-1], fill=255)
+    out = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    out.paste(base, mask=mask)
+    out.save(out_path, 'PNG')
+
+def draw_checkmark(canvas, x, y, size):
+    d = ImageDraw.Draw(canvas)
+    d.ellipse([x, y, x+size-1, y+size-1], fill=(29, 155, 240, 255))
+    p = size / 16.0
+    lw = max(1, round(1.9 * p))
+    pts = [
+        (x + round(3.5*p), y + round(8.5*p)),
+        (x + round(6.5*p), y + round(11.5*p)),
+        (x + round(12.5*p), y + round(4.5*p)),
+    ]
+    d.line([pts[0], pts[1]], fill='white', width=lw)
+    d.line([pts[1], pts[2]], fill='white', width=lw)
+
+def draw_xlogo(canvas, ox, oy, size):
+    s = size / 24.0
+    def pt(px, py):
+        return (ox + px * s, oy + py * s)
+    outer = [
+        pt(18.244, 2.25),  pt(21.552, 2.25),  pt(14.325, 10.51),
+        pt(22.827, 22.5),  pt(16.17,  22.5),  pt(11.455, 16.307),
+        pt(6.061,  22.5),  pt(2.752,  22.5),  pt(10.032, 14.175),
+        pt(2.752,  3.248), pt(8.844,  3.248),  pt(13.107,  8.886),
+        pt(18.244, 3.248),
+    ]
+    inner = [
+        pt(17.083, 20.61), pt(18.916, 20.61),
+        pt(7.084,   4.126), pt(5.117,   4.126),
+    ]
+    d = ImageDraw.Draw(canvas)
+    d.polygon(outer, fill=(255, 255, 255, 220))
+    d.polygon(inner, fill=(0, 0, 0, 255))
+
+def draw_heart(canvas, x, y, size):
+    d = ImageDraw.Draw(canvas)
+    color = (113, 118, 123, 255)
+    xs, ys = [], []
+    for i in range(360):
+        t = math.radians(i)
+        xs.append(16 * math.sin(t)**3)
+        ys.append(-(13*math.cos(t) - 5*math.cos(2*t) - 2*math.cos(3*t) - math.cos(4*t)))
+    minx, maxx = min(xs), max(xs)
+    miny, maxy = min(ys), max(ys)
+    sc = (size * 0.82) / (maxx - minx)
+    cx = x + size/2
+    cy = y + size/2 + size*0.04
+    poly = [(cx+(px-(minx+maxx)/2)*sc, cy+(py-(miny+maxy)/2)*sc) for px,py in zip(xs,ys)]
+    lw = max(1, round(size / 11))
+    d.line(poly + [poly[0]], fill=color, width=lw)
+
+def text_width(font, text):
+    try:
+        bb = font.getbbox(text)
+        return bb[2] - bb[0]
+    except Exception:
+        return len(text) * font.size
+
+def draw_multiline(d, text, font, x, y, color, line_height):
+    for line in text.split('\n'):
+        d.text((x, y), line, font=font, fill=color)
+        y += line_height
+
+def make_reply_card(path):
+    W, H = {vid_w} * SSAA, {card_h} * SSAA
+    img = Image.new('RGBA', (W, H), (0, 0, 0, 255))
+    d = ImageDraw.Draw(img)
+
+    font_name   = load_font({name_fs}   * SSAA)
+    font_handle = load_font({handle_fs} * SSAA)
+    font_body   = load_font({body_fs}   * SSAA)
+    font_footer = load_font({footer_fs} * SSAA)
+
+    ava_img = Image.open(r'{av_out}').convert('RGBA')
+    img.paste(ava_img, ({pad_h} * SSAA, {pad_top} * SSAA), ava_img)
+
+    name_x = ({pad_h} + {ava_size} + {ava_gap}) * SSAA
+    name_y = ({pad_top} + ({ava_size} - {name_fs} - {handle_fs} - 2) // 2) * SSAA
+    d.text((name_x, name_y), '{display_name}', font=font_name, fill=(255,255,255,255))
+
+    name_w  = text_width(font_name, '{display_name}')
+    check_x = name_x + name_w + 3 * SSAA
+    check_y = name_y + ({name_fs} * SSAA - {check_sz} * SSAA) // 2 + round({name_fs} * SSAA * 0.12)
+    draw_checkmark(img, check_x, check_y, {check_sz} * SSAA)
+
+    handle_y = name_y + {name_fs} * SSAA + 3 * SSAA
+    d.text((name_x, handle_y), '@{author}', font=font_handle, fill=(113,118,123,255))
+
+    xlogo_x = W - ({pad_h} + {xlogo_sz}) * SSAA
+    xlogo_y = ({pad_top} + ({ava_size} - {xlogo_sz}) // 2) * SSAA
+    draw_xlogo(img, xlogo_x, xlogo_y, {xlogo_sz} * SSAA)
+
+    body_y = {header_h} * SSAA
+    lh = ({body_fs} + {body_lh}) * SSAA
+    draw_multiline(d, '{body}', font_body, {pad_h} * SSAA, body_y, (255,255,255,255), lh)
+
+    text_y = ({header_h} + {body_block_h} + {sec_gap}) * SSAA
+    cur_x = {pad_h} * SSAA
+    date_str = '{footer_date}'
+    likes_str = '{footer_likes}'
+    d.text((cur_x, text_y), date_str, font=font_footer, fill=(113,118,123,255))
+    cur_x += text_width(font_footer, date_str)
+    if likes_str:
+        sep = '  \u00b7  '
+        d.text((cur_x, text_y), sep, font=font_footer, fill=(113,118,123,255))
+        cur_x += text_width(font_footer, sep)
+        try:
+            bb = font_footer.getbbox(likes_str)
+            glyph_top = bb[1]
+            glyph_h   = bb[3] - bb[1]
+        except Exception:
+            glyph_top = 0
+            glyph_h   = {footer_fs} * SSAA
+        heart_y_pos = text_y + glyph_top + (glyph_h - {heart_sz} * SSAA) // 2
+        draw_heart(img, cur_x, heart_y_pos, {heart_sz} * SSAA)
+        cur_x += {heart_sz} * SSAA + 4 * SSAA
+        d.text((cur_x, text_y), likes_str, font=font_footer, fill=(113,118,123,255))
+
+    img.save(path, 'PNG')
+
+make_avatar({ava_size} * SSAA, {av_src}, r'{av_out}')
+make_reply_card(r'{card_out}')
+print('ok')
+"#,
+        font_path    = font_path,
+        vid_w        = vid_w,
+        card_h       = card_h,
+        pad_h        = pad_h,
+        pad_top      = pad_top,
+        ava_size     = ava_size,
+        ava_gap      = ava_gap,
+        name_fs      = name_fs,
+        handle_fs    = handle_fs,
+        check_sz     = check_sz,
+        xlogo_sz     = xlogo_sz,
+        body_fs      = body_fs,
+        body_lh      = body_lh,
+        footer_fs    = footer_fs,
+        heart_sz     = heart_sz,
+        sec_gap      = sec_gap,
+        header_h     = header_h,
+        body_block_h = body_block_h,
+        display_name = py_str(display_name),
+        author       = py_str(author),
+        body         = py_str(body),
+        footer_date  = py_str(footer_date),
+        footer_likes = py_str(footer_likes),
+        av_src       = av_src_str,
+        av_out       = av_circle_path.display().to_string().replace('\\', "/"),
+        card_out     = card_out_path.display().to_string().replace('\\', "/"),
+    );
+
+    let script_path = dir.join("gen_reply_card.py");
+    std::fs::write(&script_path, script.as_bytes())
+        .map_err(|e| AppError::Internal(e.into()))?;
+
+    let python_exe = find_python().await?;
+
+    let run = |cmd: &str| {
+        let s = script_path.to_str().unwrap().to_string();
+        let c = cmd.to_string();
+        async move {
+            Command::new(&c)
+                .arg(&s)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output()
+                .await
+        }
+    };
+
+    let out = run(&python_exe).await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("python not found: {}", e)))?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(AppError::Internal(anyhow::anyhow!("reply card generation failed:\n{}", stderr)));
     }
 
     Ok(())
