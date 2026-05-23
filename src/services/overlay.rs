@@ -456,21 +456,18 @@ pub async fn apply_combined_overlays(
     let bot_av_out = dir.join("bot_av_out.png");
 
     if let Some(b) = bottom {
-        let ls = b.likes.map(|n| format_count(n)).unwrap_or_default();
-        let hl = b.likes.is_some() && !ls.is_empty();
         let dt = b.created_at.trim().to_string();
-        let lk = if hl { format!("{} Likes", ls) } else { String::new() };
 
         generate_reply_card(
             &dir, &bot_card, &bot_av_out,
             if bot_av_ok { Some(&bot_av_src) } else { None },
             vid_w, bot_bar,
             pad_h, pad_top, ava_size, ava_gap,
-            name_fs, handle_fs, check_sz, xlogo_sz,
-            body_fs, body_lh, footer_fs, heart_sz,
+            name_fs, handle_fs, check_sz,
+            body_fs, body_lh, footer_fs,
             sec_gap, header_h, bot_block,
             &b.display_name, &b.author, &bot_wrapped,
-            &dt, &lk, &font_path,
+            &dt, &font_path,
         ).await?;
     }
 
@@ -902,11 +899,11 @@ async fn generate_reply_card(
     avatar_src: Option<&Path>,
     vid_w: i32, card_h: i32,
     pad_h: i32, pad_top: i32, ava_size: i32, ava_gap: i32,
-    name_fs: i32, handle_fs: i32, check_sz: i32, xlogo_sz: i32,
-    body_fs: i32, body_lh: i32, footer_fs: i32, heart_sz: i32,
+    name_fs: i32, handle_fs: i32, check_sz: i32,
+    body_fs: i32, body_lh: i32, footer_fs: i32,
     sec_gap: i32, header_h: i32, body_block_h: i32,
     display_name: &str, author: &str, body: &str,
-    footer_date: &str, footer_likes: &str,
+    footer_date: &str,
     font_path: &str,
 ) -> Result<(), AppError> {
     let av_src_str = avatar_src
@@ -1061,35 +1058,12 @@ def make_reply_card(path):
     handle_y = name_y + {name_fs} * SSAA + 3 * SSAA
     d.text((name_x, handle_y), '@{author}', font=font_handle, fill=(113,118,123,255))
 
-    xlogo_x = W - ({pad_h} + {xlogo_sz}) * SSAA
-    xlogo_y = ({pad_top} + ({ava_size} - {xlogo_sz}) // 2) * SSAA
-    draw_xlogo(img, xlogo_x, xlogo_y, {xlogo_sz} * SSAA)
-
     body_y = {header_h} * SSAA
     lh = ({body_fs} + {body_lh}) * SSAA
     draw_multiline(d, '{body}', font_body, {pad_h} * SSAA, body_y, (255,255,255,255), lh)
 
     text_y = ({header_h} + {body_block_h} + {sec_gap}) * SSAA
-    cur_x = {pad_h} * SSAA
-    date_str = '{footer_date}'
-    likes_str = '{footer_likes}'
-    d.text((cur_x, text_y), date_str, font=font_footer, fill=(113,118,123,255))
-    cur_x += text_width(font_footer, date_str)
-    if likes_str:
-        sep = '  \u00b7  '
-        d.text((cur_x, text_y), sep, font=font_footer, fill=(113,118,123,255))
-        cur_x += text_width(font_footer, sep)
-        try:
-            bb = font_footer.getbbox(likes_str)
-            glyph_top = bb[1]
-            glyph_h   = bb[3] - bb[1]
-        except Exception:
-            glyph_top = 0
-            glyph_h   = {footer_fs} * SSAA
-        heart_y_pos = text_y + glyph_top + (glyph_h - {heart_sz} * SSAA) // 2
-        draw_heart(img, cur_x, heart_y_pos, {heart_sz} * SSAA)
-        cur_x += {heart_sz} * SSAA + 4 * SSAA
-        d.text((cur_x, text_y), likes_str, font=font_footer, fill=(113,118,123,255))
+    d.text(({pad_h} * SSAA, text_y), '{footer_date}', font=font_footer, fill=(113,118,123,255))
 
     img.save(path, 'PNG')
 
@@ -1107,11 +1081,9 @@ print('ok')
         name_fs      = name_fs,
         handle_fs    = handle_fs,
         check_sz     = check_sz,
-        xlogo_sz     = xlogo_sz,
         body_fs      = body_fs,
         body_lh      = body_lh,
         footer_fs    = footer_fs,
-        heart_sz     = heart_sz,
         sec_gap      = sec_gap,
         header_h     = header_h,
         body_block_h = body_block_h,
@@ -1119,7 +1091,6 @@ print('ok')
         author       = py_str(author),
         body         = py_str(body),
         footer_date  = py_str(footer_date),
-        footer_likes = py_str(footer_likes),
         av_src       = av_src_str,
         av_out       = av_circle_path.display().to_string().replace('\\', "/"),
         card_out     = card_out_path.display().to_string().replace('\\', "/"),
