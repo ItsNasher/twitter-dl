@@ -409,7 +409,10 @@ pub async fn apply_combined_overlays(
     }).unwrap_or_default();
     let bot_lines = bottom.map(|_| bot_wrapped.lines().count().max(1) as i32).unwrap_or(0);
     let bot_block = bot_lines * (body_fs + body_lh) - body_lh;
-    let bot_bar = if bottom.is_some() { header_h + bot_block + sec_gap + footer_fs + footer_pad } else { 0 };
+    let parent_footer_h = sec_gap + footer_fs + footer_pad;
+    let bot_bar = if bottom.is_some() {
+        parent_footer_h + header_h + bot_block + sec_gap + footer_fs + footer_pad
+    } else { 0 };
     let total_h = top_bar + display_h + bot_bar;
 
     // ── download avatars ─────────────────────────────────────────────
@@ -458,16 +461,28 @@ pub async fn apply_combined_overlays(
     if let Some(b) = bottom {
         let dt = b.created_at.trim().to_string();
 
+        // parent tweet footer data (from `top`)
+        let parent_footer_date = top
+            .map(|t| t.created_at.trim().to_string())
+            .unwrap_or_default();
+        let parent_footer_likes = top.and_then(|t| t.likes).map(|n| {
+            let s = format_count(n);
+            format!("{} Likes", s)
+        }).unwrap_or_default();
+
         generate_reply_card(
             &dir, &bot_card, &bot_av_out,
             if bot_av_ok { Some(&bot_av_src) } else { None },
             vid_w, bot_bar,
             pad_h, pad_top, ava_size, ava_gap,
             name_fs, handle_fs, check_sz,
-            body_fs, body_lh, footer_fs,
+            body_fs, body_lh, footer_fs, heart_sz,
             sec_gap, header_h, bot_block,
+            parent_footer_h,
             &b.display_name, &b.author, &bot_wrapped,
-            &dt, &font_path,
+            &dt,
+            &parent_footer_date, &parent_footer_likes,
+            &font_path,
         ).await?;
     }
 
@@ -900,10 +915,12 @@ async fn generate_reply_card(
     vid_w: i32, card_h: i32,
     pad_h: i32, pad_top: i32, ava_size: i32, ava_gap: i32,
     name_fs: i32, handle_fs: i32, check_sz: i32,
-    body_fs: i32, body_lh: i32, footer_fs: i32,
+    body_fs: i32, body_lh: i32, footer_fs: i32, heart_sz: i32,
     sec_gap: i32, header_h: i32, body_block_h: i32,
+    parent_footer_h: i32,
     display_name: &str, author: &str, body: &str,
     footer_date: &str,
+    parent_footer_date: &str, parent_footer_likes: &str,
     font_path: &str,
 ) -> Result<(), AppError> {
     let av_src_str = avatar_src
@@ -1043,11 +1060,43 @@ def make_reply_card(path):
     font_body   = load_font({body_fs}   * SSAA)
     font_footer = load_font({footer_fs} * SSAA)
 
+    # ── parent tweet footer ───────────────────────────────────────────
+    footer_y = {sec_gap} * SSAA
+    cur_x    = {pad_h}   * SSAA
+    parent_date  = '{parent_footer_date}'
+    parent_likes = '{parent_footer_likes}'
+
+    d.text((cur_x, footer_y), parent_date, font=font_footer, fill=(113,118,123,255))
+    cur_x += text_width(font_footer, parent_date)
+
+    if parent_likes:
+        sep = '  \u00b7  '
+        d.text((cur_x, footer_y), sep, font=font_footer, fill=(113,118,123,255))
+        cur_x += text_width(font_footer, sep)
+        try:
+            bb = font_footer.getbbox(parent_likes)
+            glyph_top = bb[1]
+            glyph_h   = bb[3] - bb[1]
+        except Exception:
+            glyph_top = 0
+            glyph_h   = {footer_fs} * SSAA
+        heart_y_pos = footer_y + glyph_top + (glyph_h - {heart_sz} * SSAA) // 2
+        draw_heart(img, cur_x, heart_y_pos, {heart_sz} * SSAA)
+        cur_x += {heart_sz} * SSAA + 4 * SSAA
+        d.text((cur_x, footer_y), parent_likes, font=font_footer, fill=(113,118,123,255))
+
+    # separator line between parent footer and reply card
+    sep_y = {parent_footer_h} * SSAA
+    d.line([(0, sep_y), (W, sep_y)], fill=(47, 51, 54, 255), width=SSAA)
+
+    # ── reply tweet card (shifted down by parent_footer_h) ────────────
+    off = {parent_footer_h} * SSAA
+
     ava_img = Image.open(r'{av_out}').convert('RGBA')
-    img.paste(ava_img, ({pad_h} * SSAA, {pad_top} * SSAA), ava_img)
+    img.paste(ava_img, ({pad_h} * SSAA, off + {pad_top} * SSAA), ava_img)
 
     name_x = ({pad_h} + {ava_size} + {ava_gap}) * SSAA
-    name_y = ({pad_top} + ({ava_size} - {name_fs} - {handle_fs} - 2) // 2) * SSAA
+    name_y = off + ({pad_top} + ({ava_size} - {name_fs} - {handle_fs} - 2) // 2) * SSAA
     d.text((name_x, name_y), '{display_name}', font=font_name, fill=(255,255,255,255))
 
     name_w  = text_width(font_name, '{display_name}')
@@ -1058,12 +1107,12 @@ def make_reply_card(path):
     handle_y = name_y + {name_fs} * SSAA + 3 * SSAA
     d.text((name_x, handle_y), '@{author}', font=font_handle, fill=(113,118,123,255))
 
-    body_y = {header_h} * SSAA
+    body_y = off + {header_h} * SSAA
     lh = ({body_fs} + {body_lh}) * SSAA
     draw_multiline(d, '{body}', font_body, {pad_h} * SSAA, body_y, (255,255,255,255), lh)
 
-    text_y = ({header_h} + {body_block_h} + {sec_gap}) * SSAA
-    d.text(({pad_h} * SSAA, text_y), '{footer_date}', font=font_footer, fill=(113,118,123,255))
+    reply_date_y = off + ({header_h} + {body_block_h} + {sec_gap}) * SSAA
+    d.text(({pad_h} * SSAA, reply_date_y), '{footer_date}', font=font_footer, fill=(113,118,123,255))
 
     img.save(path, 'PNG')
 
@@ -1090,7 +1139,11 @@ print('ok')
         display_name = py_str(display_name),
         author       = py_str(author),
         body         = py_str(body),
-        footer_date  = py_str(footer_date),
+        footer_date         = py_str(footer_date),
+        heart_sz            = heart_sz,
+        parent_footer_h     = parent_footer_h,
+        parent_footer_date  = py_str(parent_footer_date),
+        parent_footer_likes = py_str(parent_footer_likes),
         av_src       = av_src_str,
         av_out       = av_circle_path.display().to_string().replace('\\', "/"),
         card_out     = card_out_path.display().to_string().replace('\\', "/"),
