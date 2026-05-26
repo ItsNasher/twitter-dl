@@ -202,6 +202,8 @@ pub async fn apply_tweet_overlay(
         &footer_likes,
         // font
         &font_path,
+        false,
+        pad_h,
     ).await?;
 
     // ── Build filter_complex ───────────────────────────────────────────────
@@ -381,8 +383,15 @@ pub async fn apply_combined_overlays(
     let vid_corner = sc(20.0, sf);
     let sec_gap    = sc(14.0, sf);
     let footer_pad = sc(14.0, sf);
-    let vid_dw     = vid_w - vid_pad_h * 2;
-    let header_h   = pad_top + ava_size + sec_gap;
+    // In thread mode (both cards), indent video + body right of avatar column
+    let vid_left_x = if top.is_some() && bottom.is_some() {
+        pad_h + ava_size + ava_gap
+    } else {
+        vid_pad_h
+    };
+    let body_x  = vid_left_x;
+    let vid_dw  = vid_w - vid_left_x - vid_pad_h;
+    let header_h = pad_top + ava_size + sec_gap;
 
     // display area
     let display_h = {
@@ -394,7 +403,7 @@ pub async fn apply_combined_overlays(
     // ── top card height (no footer) ──────────────────────────────────
     let top_body = top.map(|t| strip_tco(&t.text)).unwrap_or_default();
     let top_wrapped = top.map(|_| {
-        let m = ((vid_w as f64 - pad_h as f64 * 2.0) / (body_fs as f64 * 0.55)).max(10.0) as usize;
+        let m = ((vid_w as f64 - body_x as f64 - vid_pad_h as f64) / (body_fs as f64 * 0.55)).max(10.0) as usize;
         word_wrap(&top_body, m, 5)
     }).unwrap_or_default();
     let top_lines = top.map(|_| top_wrapped.lines().count().max(1) as i32).unwrap_or(0);
@@ -404,7 +413,7 @@ pub async fn apply_combined_overlays(
     // ── bottom card height (with footer) ─────────────────────────────
     let bot_body = bottom.map(|b| strip_tco(&b.text)).unwrap_or_default();
     let bot_wrapped = bottom.map(|_| {
-        let m = ((vid_w as f64 - pad_h as f64 * 2.0) / (body_fs as f64 * 0.55)).max(10.0) as usize;
+        let m = ((vid_w as f64 - body_x as f64 - vid_pad_h as f64) / (body_fs as f64 * 0.55)).max(10.0) as usize;
         word_wrap(&bot_body, m, 8)
     }).unwrap_or_default();
     let bot_lines = bottom.map(|_| bot_wrapped.lines().count().max(1) as i32).unwrap_or(0);
@@ -430,6 +439,9 @@ pub async fn apply_combined_overlays(
     let bot_av_src = dir.join("bot_av_src.jpg");
     let bot_av_ok = if let Some(b) = bottom { dl_av(client, b, &bot_av_src).await } else { false };
 
+    let has_top = top.is_some();
+    let has_bot = bottom.is_some();
+
     // ── generate top card (card_top.png) + mask (mk.png) ─────────────
     let top_card = dir.join("ct.png");
     let cb_dummy = dir.join("cb_dummy.png");
@@ -451,6 +463,8 @@ pub async fn apply_combined_overlays(
             &t.created_at.trim(),
             &if hl { format!("{} Likes", ls) } else { String::new() },
             &font_path,
+            has_bot,
+            body_x,
         ).await?;
     }
 
@@ -479,6 +493,7 @@ pub async fn apply_combined_overlays(
             body_fs, body_lh, footer_fs, heart_sz,
             sec_gap, header_h, bot_block,
             parent_footer_h,
+            body_x,
             &b.display_name, &b.author, &bot_wrapped,
             &dt,
             &parent_footer_date, &parent_footer_likes,
@@ -491,8 +506,6 @@ pub async fn apply_combined_overlays(
     // input 1: top_card (if top)
     // input 2: bot_card (if bottom)
     // input N: mask (always last)
-    let has_top = top.is_some();
-    let has_bot = bottom.is_some();
     let n_card = (if has_top { 1 } else { 0 }) + (if has_bot { 1 } else { 0 });
     let mask_idx = 1 + n_card;
     let top_idx  = if has_top { Some(1) } else { None };
@@ -511,7 +524,16 @@ pub async fn apply_combined_overlays(
     fc.push_str(&format!("color=c=black:s={}x{}[bg];", vid_w, total_h));
 
     let vid_y = top_bar;
-    fc.push_str(&format!("[bg][rounded]overlay=x={}:y={}[mid];", vid_pad_h, vid_y));
+    fc.push_str(&format!("[bg][rounded]overlay=x={}:y={}[mid_raw];", vid_left_x, vid_y));
+    if has_top && has_bot {
+        let thread_x = pad_h + ava_size / 2 - 1;
+        fc.push_str(&format!(
+            "[mid_raw]drawbox=x={}:y={}:w=2:h={}:color=0x2f3336FF:t=fill[mid];",
+            thread_x, vid_y, display_h
+        ));
+    } else {
+        fc.push_str("[mid_raw]copy[mid];");
+    }
 
     // overlay top card
     if let Some(ti) = top_idx {
@@ -618,6 +640,8 @@ async fn generate_cards(
     footer_date: &str,
     footer_likes: &str,
     font_path: &str,
+    show_thread: bool,
+    body_x: i32,
 ) -> Result<(), AppError> {
     let av_src_str = avatar_src
         .map(|p| format!("r'{}'", p.display().to_string().replace('\\', "/")))
@@ -776,6 +800,12 @@ def make_card_top(path):
     ava_img = Image.open(r'{av_out}').convert('RGBA')
     img.paste(ava_img, ({pad_h} * SSAA, {pad_top} * SSAA), ava_img)
 
+    # thread line from bottom of avatar to bottom of top card
+    if {show_thread}:
+        thread_x = ({pad_h} + {ava_size} // 2) * SSAA
+        thread_y0 = ({pad_top} + {ava_size} + 3) * SSAA
+        d.line([(thread_x, thread_y0), (thread_x, H)], fill=(47,51,54,255), width=max(1, 2*SSAA))
+
     name_x = ({pad_h} + {ava_size} + {ava_gap}) * SSAA
     name_y = ({pad_top} + ({ava_size} - {name_fs} - {handle_fs} - 2) // 2) * SSAA
     d.text((name_x, name_y), '{display_name}', font=font_name, fill=(255,255,255,255))
@@ -794,7 +824,7 @@ def make_card_top(path):
 
     body_y = {header_h} * SSAA
     lh     = ({body_fs} + {body_lh}) * SSAA
-    draw_multiline(d, '{body}', font_body, {pad_h} * SSAA, body_y, (255,255,255,255), lh)
+    draw_multiline(d, '{body}', font_body, {body_x} * SSAA, body_y, (255,255,255,255), lh)
 
     img.save(path, 'PNG')
 
@@ -805,7 +835,7 @@ def make_card_bot(path):
     font_footer = load_font({footer_fs} * SSAA)
     d    = ImageDraw.Draw(img)
     text_y = {sec_gap} * SSAA
-    cur_x  = {pad_h}   * SSAA
+    cur_x  = {body_x}  * SSAA
 
     date_str  = '{footer_date}'
     likes_str = '{footer_likes}'
@@ -869,6 +899,8 @@ print('ok')
         body         = py_str(body),
         footer_date  = py_str(&footer_date),
         footer_likes = py_str(&footer_likes),
+        show_thread  = if show_thread { "True" } else { "False" },
+        body_x       = body_x,
         av_src       = av_src_str,
         av_out       = avatar_out_path.display().to_string().replace('\\', "/"),
         card_top     = card_top_path.display().to_string().replace('\\', "/"),
@@ -918,6 +950,7 @@ async fn generate_reply_card(
     body_fs: i32, body_lh: i32, footer_fs: i32, heart_sz: i32,
     sec_gap: i32, header_h: i32, body_block_h: i32,
     parent_footer_h: i32,
+    body_x: i32,
     display_name: &str, author: &str, body: &str,
     footer_date: &str,
     parent_footer_date: &str, parent_footer_likes: &str,
@@ -1060,9 +1093,14 @@ def make_reply_card(path):
     font_body   = load_font({body_fs}   * SSAA)
     font_footer = load_font({footer_fs} * SSAA)
 
+    # ── thread line from top of reply card to reply avatar center ────
+    thread_x = ({pad_h} + {ava_size} // 2) * SSAA
+    thread_y_end = ({parent_footer_h} + {pad_top} + {ava_size} // 2) * SSAA
+    d.line([(thread_x, 0), (thread_x, thread_y_end)], fill=(47,51,54,255), width=max(1, 2*SSAA))
+
     # ── parent tweet footer ───────────────────────────────────────────
     footer_y = {sec_gap} * SSAA
-    cur_x    = {pad_h}   * SSAA
+    cur_x    = {body_x}  * SSAA
     parent_date  = '{parent_footer_date}'
     parent_likes = '{parent_footer_likes}'
 
@@ -1084,10 +1122,6 @@ def make_reply_card(path):
         draw_heart(img, cur_x, heart_y_pos, {heart_sz} * SSAA)
         cur_x += {heart_sz} * SSAA + 4 * SSAA
         d.text((cur_x, footer_y), parent_likes, font=font_footer, fill=(113,118,123,255))
-
-    # separator line between parent footer and reply card
-    sep_y = {parent_footer_h} * SSAA
-    d.line([(0, sep_y), (W, sep_y)], fill=(47, 51, 54, 255), width=SSAA)
 
     # ── reply tweet card (shifted down by parent_footer_h) ────────────
     off = {parent_footer_h} * SSAA
@@ -1142,6 +1176,7 @@ print('ok')
         footer_date         = py_str(footer_date),
         heart_sz            = heart_sz,
         parent_footer_h     = parent_footer_h,
+        body_x              = body_x,
         parent_footer_date  = py_str(parent_footer_date),
         parent_footer_likes = py_str(parent_footer_likes),
         av_src       = av_src_str,
