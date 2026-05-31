@@ -210,5 +210,8 @@ The `totalCount` stat never increments because no fetch is done server-side. The
 ### 🔜 Quote mode
 - Render quoted tweet as a unified bordered box inside the main tweet card, between body and footer
 
+### 🔜 Emoji & foreign language support (tofu blocks)
+- Pillow renders missing glyphs as tofu blocks (□). Fix by bundling Noto Color Emoji and Noto Sans CJK JP/KR fonts, and adding a `layout_engine=ImageFont.LAYOUT_RAQM` fallback path in the overlay script so Japanese, Korean, Chinese, and emoji render correctly instead of boxes.
+
 ### ❌ Performance — overlay compositing is slow
 Downloading with captions (`render_card: true`) takes several seconds before the download starts due to Python Pillow asset generation + ffmpeg overlay. Worth optimizing later.
