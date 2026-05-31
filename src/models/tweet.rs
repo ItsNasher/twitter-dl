@@ -82,8 +82,6 @@ pub struct EntityBlock {
     pub media: Vec<serde_json::Value>,
 }
 
-pub type ExtendedEntities = MediaEntities;
-
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct SyndicationUser {
     pub screen_name: String,

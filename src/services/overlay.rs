@@ -331,6 +331,192 @@ pub async fn apply_caption_card(
     Ok(bytes)
 }
 
+pub async fn apply_quote_overlay(
+    client: &Client,
+    outer: &TweetRef,
+    quoted: &TweetRef,
+    video_bytes: Bytes,
+    tweet_id: &str,
+) -> Result<Bytes, AppError> {
+    let dir = std::env::temp_dir().join(format!("twdl_quote_{}", tweet_id));
+    let _ = std::fs::create_dir_all(&dir);
+
+    let video_path = dir.join("video.mp4");
+    std::fs::write(&video_path, &video_bytes).map_err(|e| AppError::Internal(e.into()))?;
+
+    let (vid_w_raw, vid_h_raw) = probe_video_dims(&video_path).await?;
+    let (vid_w, vid_h) = if vid_w_raw > MAX_RENDER_W {
+        let h = ((vid_h_raw as f64 * MAX_RENDER_W as f64 / vid_w_raw as f64) / 2.0).round() as i32 * 2;
+        (MAX_RENDER_W, h)
+    } else {
+        let h = if vid_h_raw % 2 == 0 { vid_h_raw } else { vid_h_raw + 1 };
+        (vid_w_raw, h)
+    };
+    let needs_scale = vid_w != vid_w_raw || vid_h != vid_h_raw;
+    let sf = (vid_w as f64 / BASE_WIDTH).max(0.5);
+
+    // shared layout
+    let pad_h      = sc(16.0, sf);
+    let pad_top    = sc(18.0, sf);
+    let ava_size   = sc(42.0, sf);
+    let ava_gap    = sc(10.0, sf);
+    let name_fs    = sc(15.0, sf);
+    let handle_fs  = sc(13.0, sf);
+    let check_sz   = sc(16.0, sf);
+    let xlogo_sz   = sc(20.0, sf);
+    let body_fs    = sc(17.0, sf);
+    let body_lh    = sc(6.0,  sf);
+    let footer_fs  = sc(13.0, sf);
+    let heart_sz   = sc(14.0, sf);
+    let vid_pad_h  = sc(24.0, sf);
+    let vid_corner = sc(20.0, sf);
+    let sec_gap    = sc(14.0, sf);
+    let footer_pad = sc(14.0, sf);
+    let header_h   = pad_top + ava_size + sec_gap;
+
+    // quote box layout
+    let q_pad_h    = sc(12.0, sf);
+    let q_pad_top  = sc(12.0, sf);
+    let q_pad_bot  = sc(10.0, sf);
+    let q_ava_sz   = sc(20.0, sf);
+    let q_ava_gap  = sc(6.0,  sf);
+    let q_name_fs  = sc(14.0, sf);
+    let q_handle_fs = sc(13.0, sf);
+    let q_body_fs  = sc(15.0, sf);
+    let q_body_lh  = sc(4.0,  sf);
+    let q_sec_gap  = sc(8.0,  sf);
+    let q_margin   = sc(8.0,  sf);
+    let q_corner   = sc(14.0, sf);
+
+    // top card (outer tweet — header + body, no footer)
+    let outer_body = strip_tco(&outer.text);
+    let max_chars  = ((vid_w as f64 - pad_h as f64 * 2.0) / (body_fs as f64 * 0.55)).max(10.0) as usize;
+    let outer_wrapped = word_wrap(&outer_body, max_chars, 5);
+    let outer_lines   = outer_wrapped.lines().count().max(1) as i32;
+    let outer_block_h = outer_lines * (body_fs + body_lh) - body_lh;
+    let top_bar       = header_h + outer_block_h + sec_gap;
+
+    // video display area
+    let vid_dw    = vid_w - vid_pad_h * 2;
+    let display_h = {
+        let raw = vid_h as f64 * vid_dw as f64 / vid_w as f64;
+        let r   = raw.round() as i32;
+        if r % 2 == 0 { r } else { r + 1 }
+    };
+
+    // quote box height
+    let q_header_h     = q_pad_top + q_ava_sz + q_sec_gap;
+    let q_body_clean   = strip_tco(&quoted.text);
+    let q_max_chars    = ((vid_w as f64 - pad_h as f64 * 2.0 - q_pad_h as f64 * 2.0) / (q_body_fs as f64 * 0.55)).max(10.0) as usize;
+    let q_wrapped      = word_wrap(&q_body_clean, q_max_chars, 3);
+    let q_lines        = q_wrapped.lines().count().max(1) as i32;
+    let q_body_block_h = q_lines * (q_body_fs + q_body_lh) - q_body_lh;
+    let q_box_h        = q_header_h + q_body_block_h + q_pad_bot;
+    let bot_bar        = q_margin + q_box_h + sec_gap + footer_fs + footer_pad;
+    let total_h        = top_bar + display_h + bot_bar;
+
+    // outer tweet footer
+    let likes_str    = outer.likes.map(|n| format_count(n)).unwrap_or_default();
+    let has_likes    = outer.likes.is_some() && !likes_str.is_empty();
+    let footer_date  = outer.created_at.trim().to_string();
+    let footer_likes = if has_likes { format!("{} Likes", likes_str) } else { String::new() };
+
+    let font_path = find_font().map(|p| p.display().to_string().replace('\\', "/")).unwrap_or_default();
+
+    // download avatars
+    let outer_av_src = dir.join("outer_av_src.jpg");
+    let outer_av_ok = if let Some(ref url) = outer.avatar_url {
+        let hd = url.replace("_normal.", "_200x200.");
+        let ok = download_file(client, &hd, &outer_av_src).await.is_ok();
+        if !ok { download_file(client, url, &outer_av_src).await.is_ok() } else { true }
+    } else { false };
+
+    let q_av_src = dir.join("q_av_src.jpg");
+    let q_av_ok = if let Some(ref url) = quoted.avatar_url {
+        let hd = url.replace("_normal.", "_200x200.");
+        let ok = download_file(client, &hd, &q_av_src).await.is_ok();
+        if !ok { download_file(client, url, &q_av_src).await.is_ok() } else { true }
+    } else { false };
+
+    // generate cards
+    let top_card_path = dir.join("qt_top.png");
+    let mask_path     = dir.join("qt_mask.png");
+    let outer_av_out  = dir.join("qt_outer_av.png");
+    let bot_card_path = dir.join("qt_bot.png");
+    let q_av_out      = dir.join("qt_q_av.png");
+
+    generate_cards(
+        &dir, &top_card_path, &dir.join("qt_dummy.png"), &mask_path, &outer_av_out,
+        if outer_av_ok { Some(&outer_av_src) } else { None },
+        vid_w, top_bar, 0, vid_dw, display_h, vid_corner,
+        pad_h, pad_top, ava_size, ava_gap,
+        name_fs, handle_fs, check_sz, xlogo_sz,
+        body_fs, body_lh, footer_fs, heart_sz,
+        sec_gap, header_h,
+        &outer.display_name, &outer.author, &outer_wrapped,
+        &footer_date, &footer_likes,
+        &font_path, false, pad_h,
+    ).await?;
+
+    generate_quote_bot_card(
+        &dir, &bot_card_path, &q_av_out,
+        if q_av_ok { Some(&q_av_src) } else { None },
+        vid_w, bot_bar,
+        pad_h, q_pad_h, q_pad_top, q_pad_bot,
+        q_ava_sz, q_ava_gap, q_name_fs, q_handle_fs,
+        q_body_fs, q_body_lh, q_header_h, q_box_h,
+        q_margin, q_corner,
+        footer_fs, heart_sz, sec_gap,
+        &quoted.display_name, &quoted.author, &quoted.created_at.trim(),
+        &q_wrapped, &footer_date, &footer_likes,
+        &font_path,
+    ).await?;
+
+    // filter_complex — identical topology to apply_tweet_overlay
+    let mut f = String::new();
+    if needs_scale {
+        f.push_str(&format!("[0:v]scale=w={}:h={}:flags=lanczos[src];", vid_w, vid_h));
+    } else {
+        f.push_str("[0:v]copy[src];");
+    }
+    f.push_str(&format!("[src]scale=w={}:h={}:flags=lanczos[scaled];", vid_dw, display_h));
+    f.push_str("[scaled][3:v]alphamerge[rounded];");
+    f.push_str(&format!("color=c=black:s={}x{}[bg];", vid_w, total_h));
+    f.push_str(&format!("[bg][rounded]overlay=x={}:y={}[with_video];", vid_pad_h, top_bar));
+    f.push_str(&format!("[1:v]scale=w={}:h={}:flags=lanczos[top_ds];", vid_w, top_bar));
+    f.push_str(&format!("[2:v]scale=w={}:h={}:flags=lanczos[bot_ds];", vid_w, bot_bar));
+    f.push_str("[with_video][top_ds]overlay=x=0:y=0[with_top];");
+    f.push_str(&format!("[with_top][bot_ds]overlay=x=0:y={}[final];", top_bar + display_h));
+
+    let out_path = dir.join("output.mp4");
+    let mut args: Vec<String> = vec![
+        "-y".into(), "-i".into(), video_path.to_str().unwrap().to_string(),
+        "-i".into(), top_card_path.to_str().unwrap().to_string(),
+        "-i".into(), bot_card_path.to_str().unwrap().to_string(),
+        "-i".into(), mask_path.to_str().unwrap().to_string(),
+        "-filter_complex".into(), f,
+        "-map".into(), "[final]".into(),
+        "-map".into(), "0:a?".into(),
+    ];
+    args.extend(encoder_args());
+    args.extend(["-c:a".into(), "copy".into(), "-movflags".into(), "+faststart".into(),
+                 "-shortest".into(), out_path.to_str().unwrap().to_string()]);
+
+    let child = Command::new("ffmpeg")
+        .args(&args).stdout(Stdio::null()).stderr(Stdio::piped())
+        .spawn().map_err(|e| AppError::Ffmpeg(format!("spawn ffmpeg: {}", e)))?;
+    let output = child.wait_with_output().await
+        .map_err(|e| AppError::Ffmpeg(format!("ffmpeg wait: {}", e)))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::Ffmpeg(format!("quote overlay failed:\n{}", stderr)));
+    }
+
+    let result = std::fs::read(&out_path).map_err(|e| AppError::Internal(e.into()))?;
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(Bytes::from(result))
+}
+
 /// Combined overlay — renders a top tweet card and/or a bottom tweet card
 /// around the video in a single frame.  Avoids the codec-mismatch problems
 /// of separate clips + concat.
@@ -1211,6 +1397,228 @@ print('ok')
         return Err(AppError::Internal(anyhow::anyhow!("reply card generation failed:\n{}", stderr)));
     }
 
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn generate_quote_bot_card(
+    dir: &Path,
+    card_out: &Path,
+    q_av_circle: &Path,
+    q_avatar_src: Option<&Path>,
+    vid_w: i32, bot_bar: i32,
+    pad_h: i32,
+    q_pad_h: i32, q_pad_top: i32, _q_pad_bot: i32,
+    q_ava_sz: i32, q_ava_gap: i32,
+    q_name_fs: i32, q_handle_fs: i32,
+    q_body_fs: i32, q_body_lh: i32,
+    q_header_h: i32, q_box_h: i32,
+    q_margin: i32, q_corner: i32,
+    footer_fs: i32, heart_sz: i32, sec_gap: i32,
+    q_display_name: &str, q_author: &str, q_date: &str,
+    q_body: &str,
+    footer_date: &str, footer_likes: &str,
+    font_path: &str,
+) -> Result<(), AppError> {
+    let q_av_src_str = q_avatar_src
+        .map(|p| format!("r'{}'", p.display().to_string().replace('\\', "/")))
+        .unwrap_or_else(|| "None".to_string());
+    let py_str = |s: &str| -> String {
+        s.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n")
+    };
+
+    let script = format!(r#"
+import os, math
+from PIL import Image, ImageDraw, ImageFont
+
+SSAA = 2
+FONT_PATH = r'{font_path}'
+
+def load_font(size):
+    if FONT_PATH and os.path.exists(FONT_PATH):
+        try: return ImageFont.truetype(FONT_PATH, size)
+        except Exception: pass
+    candidates = [
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        'C:/Windows/Fonts/segoeui.ttf',
+        'C:/Windows/Fonts/arial.ttf',
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            try: return ImageFont.truetype(p, size)
+            except Exception: pass
+    return ImageFont.load_default()
+
+def make_avatar(size, src_path, out_path):
+    if src_path is not None and os.path.exists(src_path):
+        try:
+            base = Image.open(src_path).convert('RGBA').resize((size, size), Image.LANCZOS)
+        except Exception:
+            base = Image.new('RGBA', (size, size), (29, 34, 48, 255))
+    else:
+        base = Image.new('RGBA', (size, size), (29, 34, 48, 255))
+    mask = Image.new('L', (size, size), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, size-1, size-1], fill=255)
+    out = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    out.paste(base, mask=mask)
+    out.save(out_path, 'PNG')
+
+def text_width(font, text):
+    try:
+        bb = font.getbbox(text)
+        return bb[2] - bb[0]
+    except Exception:
+        return len(text) * font.size
+
+def draw_multiline(d, text, font, x, y, color, lh):
+    for line in text.split('\n'):
+        d.text((x, y), line, font=font, fill=color)
+        y += lh
+
+def draw_heart(canvas, x, y, size):
+    d = ImageDraw.Draw(canvas)
+    color = (113, 118, 123, 255)
+    xs, ys = [], []
+    for i in range(360):
+        t = math.radians(i)
+        xs.append(16 * math.sin(t)**3)
+        ys.append(-(13*math.cos(t) - 5*math.cos(2*t) - 2*math.cos(3*t) - math.cos(4*t)))
+    minx, maxx = min(xs), max(xs)
+    miny, maxy = min(ys), max(ys)
+    sc = (size * 0.82) / (maxx - minx)
+    cx = x + size/2
+    cy = y + size/2 + size*0.04
+    poly = [(cx+(px-(minx+maxx)/2)*sc, cy+(py-(miny+maxy)/2)*sc) for px,py in zip(xs,ys)]
+    lw = max(1, round(size / 11))
+    d.line(poly + [poly[0]], fill=color, width=lw)
+
+def make_quote_bot(path):
+    W, H = {vid_w} * SSAA, {bot_bar} * SSAA
+    img = Image.new('RGBA', (W, H), (0, 0, 0, 255))
+    d   = ImageDraw.Draw(img)
+
+    font_q_name   = load_font({q_name_fs}   * SSAA)
+    font_q_handle = load_font({q_handle_fs} * SSAA)
+    font_q_body   = load_font({q_body_fs}   * SSAA)
+    font_footer   = load_font({footer_fs}   * SSAA)
+
+    # ── Quote box border ──────────────────────────────────────────────
+    box_x0 = {pad_h}               * SSAA
+    box_y0 = {q_margin}            * SSAA
+    box_x1 = ({vid_w} - {pad_h})   * SSAA - 1
+    box_y1 = ({q_margin} + {q_box_h}) * SSAA - 1
+    d.rounded_rectangle([box_x0, box_y0, box_x1, box_y1],
+                        radius={q_corner} * SSAA,
+                        outline=(47, 51, 54, 255),
+                        width=max(1, SSAA))
+
+    # ── Mini avatar ───────────────────────────────────────────────────
+    q_ava_img = Image.open(r'{q_av_out}').convert('RGBA')
+    ava_x = int(box_x0 + {q_pad_h} * SSAA)
+    ava_y = int(box_y0 + {q_pad_top} * SSAA)
+    img.paste(q_ava_img, (ava_x, ava_y), q_ava_img)
+
+    # ── Name · @handle · date (inline, one row) ───────────────────────
+    name_row_y = ava_y + ({q_ava_sz} * SSAA - {q_name_fs} * SSAA) // 2
+    cur_x = ava_x + {q_ava_sz} * SSAA + {q_ava_gap} * SSAA
+
+    d.text((cur_x, name_row_y), '{q_display_name}', font=font_q_name, fill=(231, 233, 234, 255))
+    cur_x += text_width(font_q_name, '{q_display_name}')
+
+    handle_part = ' @{q_author}'
+    d.text((cur_x, name_row_y), handle_part, font=font_q_handle, fill=(113, 118, 123, 255))
+    cur_x += text_width(font_q_handle, handle_part)
+
+    if '{q_date}':
+        date_part = ' \u00b7 {q_date}'
+        d.text((cur_x, name_row_y), date_part, font=font_q_handle, fill=(113, 118, 123, 255))
+
+    # ── Quoted body text ──────────────────────────────────────────────
+    body_x = box_x0 + {q_pad_h} * SSAA
+    body_y = box_y0 + {q_header_h} * SSAA
+    lh     = ({q_body_fs} + {q_body_lh}) * SSAA
+    draw_multiline(d, '{q_body}', font_q_body, body_x, body_y, (231, 233, 234, 255), lh)
+
+    # ── Outer tweet footer (below the quote box) ──────────────────────
+    footer_y = ({q_margin} + {q_box_h} + {sec_gap}) * SSAA
+    cur_x    = {pad_h} * SSAA
+    date_str  = '{footer_date}'
+    likes_str = '{footer_likes}'
+
+    d.text((cur_x, footer_y), date_str, font=font_footer, fill=(113, 118, 123, 255))
+    cur_x += text_width(font_footer, date_str)
+
+    if likes_str:
+        sep = '  \u00b7  '
+        d.text((cur_x, footer_y), sep, font=font_footer, fill=(113, 118, 123, 255))
+        cur_x += text_width(font_footer, sep)
+        try:
+            bb = font_footer.getbbox(likes_str)
+            glyph_top = bb[1]
+            glyph_h   = bb[3] - bb[1]
+        except Exception:
+            glyph_top = 0
+            glyph_h   = {footer_fs} * SSAA
+        heart_y_pos = footer_y + glyph_top + (glyph_h - {heart_sz} * SSAA) // 2
+        draw_heart(img, cur_x, heart_y_pos, {heart_sz} * SSAA)
+        cur_x += {heart_sz} * SSAA + 4 * SSAA
+        d.text((cur_x, footer_y), likes_str, font=font_footer, fill=(113, 118, 123, 255))
+
+    img.save(path, 'PNG')
+
+make_avatar({q_ava_sz} * SSAA, {q_av_src}, r'{q_av_out}')
+make_quote_bot(r'{card_out}')
+print('ok')
+"#,
+        font_path      = font_path,
+        vid_w          = vid_w,
+        bot_bar        = bot_bar,
+        pad_h          = pad_h,
+        q_pad_h        = q_pad_h,
+        q_pad_top      = q_pad_top,
+        q_ava_sz       = q_ava_sz,
+        q_ava_gap      = q_ava_gap,
+        q_name_fs      = q_name_fs,
+        q_handle_fs    = q_handle_fs,
+        q_body_fs      = q_body_fs,
+        q_body_lh      = q_body_lh,
+        q_header_h     = q_header_h,
+        q_box_h        = q_box_h,
+        q_margin       = q_margin,
+        q_corner       = q_corner,
+        footer_fs      = footer_fs,
+        heart_sz       = heart_sz,
+        sec_gap        = sec_gap,
+        q_display_name = py_str(q_display_name),
+        q_author       = py_str(q_author),
+        q_date         = py_str(q_date),
+        q_body         = py_str(q_body),
+        footer_date    = py_str(footer_date),
+        footer_likes   = py_str(footer_likes),
+        q_av_src       = q_av_src_str,
+        q_av_out       = q_av_circle.display().to_string().replace('\\', "/"),
+        card_out       = card_out.display().to_string().replace('\\', "/"),
+    );
+
+    let script_path = dir.join("gen_quote_bot.py");
+    std::fs::write(&script_path, script.as_bytes()).map_err(|e| AppError::Internal(e.into()))?;
+
+    let python_exe = find_python().await?;
+    let out = Command::new(&python_exe)
+        .arg(&script_path)
+        .stdout(Stdio::piped()).stderr(Stdio::piped())
+        .output().await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("python not found: {}", e)))?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(AppError::Internal(anyhow::anyhow!("quote bot card failed:\n{}", stderr)));
+    }
     Ok(())
 }
 
