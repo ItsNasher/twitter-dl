@@ -368,8 +368,6 @@ pub async fn apply_quote_overlay(
     let body_lh    = sc(6.0,  sf);
     let footer_fs  = sc(13.0, sf);
     let heart_sz   = sc(14.0, sf);
-    let vid_pad_h  = sc(24.0, sf);
-    let vid_corner = sc(20.0, sf);
     let sec_gap    = sc(14.0, sf);
     let footer_pad = sc(14.0, sf);
     let header_h   = pad_top + ava_size + sec_gap;
@@ -388,6 +386,17 @@ pub async fn apply_quote_overlay(
     let q_margin   = sc(8.0,  sf);
     let q_corner   = sc(14.0, sf);
 
+    // inner video inside quote box layout vars
+    let q_vid_pad_v    = sc(8.0, sf);
+    let q_vid_x        = pad_h + q_pad_h;
+    let q_vid_w_inner  = vid_w - q_vid_x * 2;
+    let q_vid_display_h = {
+        let raw = vid_h as f64 * q_vid_w_inner as f64 / vid_w as f64;
+        let r   = raw.round() as i32;
+        if r % 2 == 0 { r } else { r + 1 }
+    };
+    let q_vid_corner_inner = sc(10.0, sf);
+
     // top card (outer tweet — header + body, no footer)
     let outer_body = strip_tco(&outer.text);
     let max_chars  = ((vid_w as f64 - pad_h as f64 * 2.0) / (body_fs as f64 * 0.55)).max(10.0) as usize;
@@ -395,14 +404,6 @@ pub async fn apply_quote_overlay(
     let outer_lines   = outer_wrapped.lines().count().max(1) as i32;
     let outer_block_h = outer_lines * (body_fs + body_lh) - body_lh;
     let top_bar       = header_h + outer_block_h + sec_gap;
-
-    // video display area
-    let vid_dw    = vid_w - vid_pad_h * 2;
-    let display_h = {
-        let raw = vid_h as f64 * vid_dw as f64 / vid_w as f64;
-        let r   = raw.round() as i32;
-        if r % 2 == 0 { r } else { r + 1 }
-    };
 
     // quote box height
     let q_header_h     = q_pad_top + q_ava_sz + q_sec_gap;
@@ -412,8 +413,21 @@ pub async fn apply_quote_overlay(
     let q_lines        = q_wrapped.lines().count().max(1) as i32;
     let q_body_block_h = q_lines * (q_body_fs + q_body_lh) - q_body_lh;
     let q_box_h        = q_header_h + q_body_block_h + q_pad_bot;
-    let bot_bar        = q_margin + q_box_h + sec_gap + footer_fs + footer_pad;
-    let total_h        = top_bar + display_h + bot_bar;
+
+    // bot_bar includes the inner video area inside the quote box
+    let bot_bar = q_margin
+        + q_header_h
+        + q_body_block_h
+        + q_vid_pad_v
+        + q_vid_display_h
+        + q_vid_pad_v
+        + sec_gap + footer_fs + footer_pad;
+
+    // total_h — no standalone display row, video lives inside the quote box
+    let total_h = top_bar + bot_bar;
+
+    // y of inner video in the full frame:
+    let inner_vid_y = top_bar + q_margin + q_header_h + q_body_block_h + q_vid_pad_v;
 
     // outer tweet footer
     let likes_str    = outer.likes.map(|n| format_count(n)).unwrap_or_default();
@@ -440,15 +454,15 @@ pub async fn apply_quote_overlay(
 
     // generate cards
     let top_card_path = dir.join("qt_top.png");
-    let mask_path     = dir.join("qt_mask.png");
     let outer_av_out  = dir.join("qt_outer_av.png");
     let bot_card_path = dir.join("qt_bot.png");
     let q_av_out      = dir.join("qt_q_av.png");
+    let inner_mask_path = dir.join("qt_inner_mask.png");
 
     generate_cards(
-        &dir, &top_card_path, &dir.join("qt_dummy.png"), &mask_path, &outer_av_out,
+        &dir, &top_card_path, &dir.join("qt_dummy.png"), &dir.join("qt_mask.png"), &outer_av_out,
         if outer_av_ok { Some(&outer_av_src) } else { None },
-        vid_w, top_bar, 0, vid_dw, display_h, vid_corner,
+        vid_w, top_bar, 0, 0, 0, 0,
         pad_h, pad_top, ava_size, ava_gap,
         name_fs, handle_fs, check_sz, xlogo_sz,
         body_fs, body_lh, footer_fs, heart_sz,
@@ -459,41 +473,64 @@ pub async fn apply_quote_overlay(
     ).await?;
 
     generate_quote_bot_card(
-        &dir, &bot_card_path, &q_av_out,
+        &dir, &bot_card_path, &q_av_out, &inner_mask_path,
         if q_av_ok { Some(&q_av_src) } else { None },
         vid_w, bot_bar,
         pad_h, q_pad_h, q_pad_top, q_pad_bot,
         q_ava_sz, q_ava_gap, q_name_fs, q_handle_fs,
-        q_body_fs, q_body_lh, q_header_h, q_box_h,
-        q_margin, q_corner,
+        q_body_fs, q_body_lh, q_header_h, q_body_block_h, q_box_h,
+        q_sec_gap, q_margin, q_corner,
         footer_fs, heart_sz, sec_gap,
+        q_vid_x, q_vid_w_inner, q_vid_display_h, q_vid_pad_v, q_vid_corner_inner,
         &quoted.display_name, &quoted.author, &quoted.created_at.trim(),
         &q_wrapped, &footer_date, &footer_likes,
         &font_path,
     ).await?;
 
-    // filter_complex — identical topology to apply_tweet_overlay
+    // ── Filter complex ─────────────────────────────────────────────────────
     let mut f = String::new();
+
+    // 1. Optional source downscale
     if needs_scale {
         f.push_str(&format!("[0:v]scale=w={}:h={}:flags=lanczos[src];", vid_w, vid_h));
     } else {
         f.push_str("[0:v]copy[src];");
     }
-    f.push_str(&format!("[src]scale=w={}:h={}:flags=lanczos[scaled];", vid_dw, display_h));
-    f.push_str("[scaled][3:v]alphamerge[rounded];");
+
+    // 2. Scale source video to fit inside the quote box
+    f.push_str(&format!(
+        "[src]scale=w={}:h={}:flags=lanczos[inner_scaled];",
+        q_vid_w_inner, q_vid_display_h
+    ));
+
+    // 3. Rounded corners on inner video using inner mask [3:v]
+    f.push_str("[inner_scaled][3:v]alphamerge[inner_rounded];");
+
+    // 4. Black canvas — no standalone video row, just top_bar + bot_bar
     f.push_str(&format!("color=c=black:s={}x{}[bg];", vid_w, total_h));
-    f.push_str(&format!("[bg][rounded]overlay=x={}:y={}[with_video];", vid_pad_h, top_bar));
+
+    // 5. Scale cards down from 2× SSAA
     f.push_str(&format!("[1:v]scale=w={}:h={}:flags=lanczos[top_ds];", vid_w, top_bar));
     f.push_str(&format!("[2:v]scale=w={}:h={}:flags=lanczos[bot_ds];", vid_w, bot_bar));
-    f.push_str("[with_video][top_ds]overlay=x=0:y=0[with_top];");
-    f.push_str(&format!("[with_top][bot_ds]overlay=x=0:y={}[final];", top_bar + display_h));
+
+    // 6. Overlay top card
+    f.push_str("[bg][top_ds]overlay=x=0:y=0[with_top];");
+
+    // 7. Overlay bot card
+    f.push_str(&format!("[with_top][bot_ds]overlay=x=0:y={}[with_bot];", top_bar));
+
+    // 8. Overlay inner video inside the quote box
+    f.push_str(&format!(
+        "[with_bot][inner_rounded]overlay=x={}:y={}[final];",
+        q_vid_x, inner_vid_y
+    ));
 
     let out_path = dir.join("output.mp4");
     let mut args: Vec<String> = vec![
         "-y".into(), "-i".into(), video_path.to_str().unwrap().to_string(),
         "-i".into(), top_card_path.to_str().unwrap().to_string(),
         "-i".into(), bot_card_path.to_str().unwrap().to_string(),
-        "-i".into(), mask_path.to_str().unwrap().to_string(),
+        "-i".into(), inner_mask_path.to_str().unwrap().to_string(),
         "-filter_complex".into(), f,
         "-map".into(), "[final]".into(),
         "-map".into(), "0:a?".into(),
@@ -1056,7 +1093,8 @@ make_avatar({ava_size} * SSAA, {av_src}, r'{av_out}')
 make_card_top(r'{card_top}')
 if {bot_bar} > 0:
     make_card_bot(r'{card_bot}')
-make_video_mask({vid_dw}, {display_h}, {vid_corner}, r'{mask}')
+if {vid_dw} > 0 and {display_h} > 0:
+    make_video_mask({vid_dw}, {display_h}, {vid_corner}, r'{mask}')
 print('ok')
 "#,
         font_path    = font_path,
@@ -1405,6 +1443,7 @@ async fn generate_quote_bot_card(
     dir: &Path,
     card_out: &Path,
     q_av_circle: &Path,
+    inner_mask_out: &Path,
     q_avatar_src: Option<&Path>,
     vid_w: i32, bot_bar: i32,
     pad_h: i32,
@@ -1412,9 +1451,11 @@ async fn generate_quote_bot_card(
     q_ava_sz: i32, q_ava_gap: i32,
     q_name_fs: i32, q_handle_fs: i32,
     q_body_fs: i32, q_body_lh: i32,
-    q_header_h: i32, q_box_h: i32,
-    q_margin: i32, q_corner: i32,
+    q_header_h: i32, _q_body_block_h: i32, q_box_h: i32,
+    _q_sec_gap: i32, q_margin: i32, q_corner: i32,
     footer_fs: i32, heart_sz: i32, sec_gap: i32,
+    q_vid_x: i32, q_vid_w_inner: i32, q_vid_display_h: i32,
+    q_vid_pad_v: i32, q_vid_corner_inner: i32,
     q_display_name: &str, q_author: &str, q_date: &str,
     q_body: &str,
     footer_date: &str, footer_likes: &str,
@@ -1497,6 +1538,11 @@ def draw_heart(canvas, x, y, size):
     lw = max(1, round(size / 11))
     d.line(poly + [poly[0]], fill=color, width=lw)
 
+def make_inner_mask(w, h, r, path):
+    mask = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, w-1, h-1], radius=r, fill=255)
+    mask.save(path, 'PNG')
+
 def make_quote_bot(path):
     W, H = {vid_w} * SSAA, {bot_bar} * SSAA
     img = Image.new('RGBA', (W, H), (0, 0, 0, 255))
@@ -1516,6 +1562,13 @@ def make_quote_bot(path):
                         radius={q_corner} * SSAA,
                         outline=(47, 51, 54, 255),
                         width=max(1, SSAA))
+
+    # ── Black placeholder for inner video slot ────────────────────────
+    vid_slot_x0 = {q_vid_x} * SSAA
+    vid_slot_y0 = ({q_margin} + {q_header_h} + {q_body_block_h} + {q_vid_pad_v}) * SSAA
+    vid_slot_x1 = ({q_vid_x} + {q_vid_w_inner}) * SSAA
+    vid_slot_y1 = vid_slot_y0 + {q_vid_display_h} * SSAA
+    d.rectangle([vid_slot_x0, vid_slot_y0, vid_slot_x1, vid_slot_y1], fill=(0, 0, 0, 255))
 
     # ── Mini avatar ───────────────────────────────────────────────────
     q_ava_img = Image.open(r'{q_av_out}').convert('RGBA')
@@ -1545,7 +1598,7 @@ def make_quote_bot(path):
     draw_multiline(d, '{q_body}', font_q_body, body_x, body_y, (231, 233, 234, 255), lh)
 
     # ── Outer tweet footer (below the quote box) ──────────────────────
-    footer_y = ({q_margin} + {q_box_h} + {sec_gap}) * SSAA
+    footer_y = ({q_margin} + {q_box_h} + {q_vid_pad_v} + {q_vid_display_h} + {q_vid_pad_v} + {sec_gap}) * SSAA
     cur_x    = {pad_h} * SSAA
     date_str  = '{footer_date}'
     likes_str = '{footer_likes}'
@@ -1573,36 +1626,44 @@ def make_quote_bot(path):
 
 make_avatar({q_ava_sz} * SSAA, {q_av_src}, r'{q_av_out}')
 make_quote_bot(r'{card_out}')
+make_inner_mask({q_vid_w_inner}, {q_vid_display_h}, {q_vid_corner_inner}, r'{inner_mask_out}')
 print('ok')
 "#,
-        font_path      = font_path,
-        vid_w          = vid_w,
-        bot_bar        = bot_bar,
-        pad_h          = pad_h,
-        q_pad_h        = q_pad_h,
-        q_pad_top      = q_pad_top,
-        q_ava_sz       = q_ava_sz,
-        q_ava_gap      = q_ava_gap,
-        q_name_fs      = q_name_fs,
-        q_handle_fs    = q_handle_fs,
-        q_body_fs      = q_body_fs,
-        q_body_lh      = q_body_lh,
-        q_header_h     = q_header_h,
-        q_box_h        = q_box_h,
-        q_margin       = q_margin,
-        q_corner       = q_corner,
-        footer_fs      = footer_fs,
-        heart_sz       = heart_sz,
-        sec_gap        = sec_gap,
-        q_display_name = py_str(q_display_name),
-        q_author       = py_str(q_author),
-        q_date         = py_str(q_date),
-        q_body         = py_str(q_body),
-        footer_date    = py_str(footer_date),
-        footer_likes   = py_str(footer_likes),
-        q_av_src       = q_av_src_str,
-        q_av_out       = q_av_circle.display().to_string().replace('\\', "/"),
-        card_out       = card_out.display().to_string().replace('\\', "/"),
+        font_path          = font_path,
+        vid_w              = vid_w,
+        bot_bar            = bot_bar,
+        pad_h              = pad_h,
+        q_pad_h            = q_pad_h,
+        q_pad_top          = q_pad_top,
+        q_ava_sz           = q_ava_sz,
+        q_ava_gap          = q_ava_gap,
+        q_name_fs          = q_name_fs,
+        q_handle_fs        = q_handle_fs,
+        q_body_fs          = q_body_fs,
+        q_body_lh          = q_body_lh,
+        q_header_h         = q_header_h,
+        q_body_block_h     = _q_body_block_h,
+        q_box_h            = q_box_h,
+        q_margin           = q_margin,
+        q_corner           = q_corner,
+        footer_fs          = footer_fs,
+        heart_sz           = heart_sz,
+        sec_gap            = sec_gap,
+        q_vid_x            = q_vid_x,
+        q_vid_w_inner      = q_vid_w_inner,
+        q_vid_display_h    = q_vid_display_h,
+        q_vid_pad_v        = q_vid_pad_v,
+        q_vid_corner_inner = q_vid_corner_inner,
+        inner_mask_out     = inner_mask_out.display().to_string().replace('\\', "/"),
+        q_display_name     = py_str(q_display_name),
+        q_author           = py_str(q_author),
+        q_date             = py_str(q_date),
+        q_body             = py_str(q_body),
+        footer_date        = py_str(footer_date),
+        footer_likes       = py_str(footer_likes),
+        q_av_src           = q_av_src_str,
+        q_av_out           = q_av_circle.display().to_string().replace('\\', "/"),
+        card_out           = card_out.display().to_string().replace('\\', "/"),
     );
 
     let script_path = dir.join("gen_quote_bot.py");

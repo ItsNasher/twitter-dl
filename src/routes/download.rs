@@ -47,7 +47,7 @@ pub async fn handler(
     let filename = format!("{}_{}.mp4", tweet.user.screen_name, tweet_id);
 
     // ── Fast path: single video, no overlay → stream from Twitter CDN ─────
-    if !body.render_card && !body.include_quote && !body.include_reply {
+    if !body.render_card {
         let url = promoted_video_url(&state.client, &tweet, body.quality.as_deref()).await?;
         let resp = state.client.get(&url).send().await?;
         let stream = resp.bytes_stream().map(|r| r.map_err(|e| anyhow::anyhow!(e)));
@@ -81,18 +81,23 @@ pub async fn handler(
 
         if body.include_quote {
             // ── Quote tweet layout ────────────────────────────────────
-            // Outer tweet card on top + video + quote box + footer.
+            // Outer tweet card on top + quoted tweet's video + quote box + footer.
             let quoted_tref = fetch_quoted_tweet(&state.client, &tweet)
                 .await
                 .ok_or_else(|| AppError::Internal(
                     anyhow::anyhow!("no quoted tweet found")
                 ))?;
 
+            let display_video = match quoted_video(&state.client, &tweet, body.quality.as_deref()).await? {
+                Some((v, _)) => v,
+                None => main,
+            };
+
             overlay::apply_quote_overlay(
                 &state.client,
                 &outer_tref,
                 &quoted_tref,
-                main,
+                display_video,
                 &tweet_id,
             ).await?
 
