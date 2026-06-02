@@ -138,7 +138,7 @@ pub async fn apply_tweet_overlay(
     let vid_pad_h  = sc(24.0, sf);
     let vid_corner = sc(20.0, sf);
     let sec_gap    = sc(14.0, sf);
-    let footer_pad = sc(14.0, sf);
+    let footer_pad = sc(32.0, sf);
 
     // body text
     let body_clean   = strip_tco(&tweet.text);
@@ -369,7 +369,7 @@ pub async fn apply_quote_overlay(
     let footer_fs  = sc(13.0, sf);
     let heart_sz   = sc(14.0, sf);
     let sec_gap    = sc(14.0, sf);
-    let footer_pad = sc(14.0, sf);
+    let footer_pad = sc(32.0, sf);
     let header_h   = pad_top + ava_size + sec_gap;
 
     // quote box layout
@@ -412,15 +412,10 @@ pub async fn apply_quote_overlay(
     let q_wrapped      = word_wrap(&q_body_clean, q_max_chars, 3);
     let q_lines        = q_wrapped.lines().count().max(1) as i32;
     let q_body_block_h = q_lines * (q_body_fs + q_body_lh) - q_body_lh;
-    let q_box_h        = q_header_h + q_body_block_h + q_pad_bot;
+    let q_box_h = q_header_h + q_body_block_h + q_vid_pad_v + q_vid_display_h + q_vid_pad_v;
 
-    // bot_bar includes the inner video area inside the quote box
     let bot_bar = q_margin
-        + q_header_h
-        + q_body_block_h
-        + q_vid_pad_v
-        + q_vid_display_h
-        + q_vid_pad_v
+        + q_box_h
         + sec_gap + footer_fs + footer_pad;
 
     // total_h — no standalone display row, video lives inside the quote box
@@ -605,7 +600,7 @@ pub async fn apply_combined_overlays(
     let vid_pad_h  = sc(24.0, sf);
     let vid_corner = sc(20.0, sf);
     let sec_gap    = sc(14.0, sf);
-    let footer_pad = sc(14.0, sf);
+    let footer_pad = sc(32.0, sf);
     // In thread mode (both cards), indent video + body right of avatar column
     let vid_left_x = if top.is_some() && bottom.is_some() {
         pad_h + ava_size + ava_gap
@@ -1598,7 +1593,7 @@ def make_quote_bot(path):
     draw_multiline(d, '{q_body}', font_q_body, body_x, body_y, (231, 233, 234, 255), lh)
 
     # ── Outer tweet footer (below the quote box) ──────────────────────
-    footer_y = ({q_margin} + {q_box_h} + {q_vid_pad_v} + {q_vid_display_h} + {q_vid_pad_v} + {sec_gap}) * SSAA
+    footer_y = ({q_margin} + {q_box_h} + {sec_gap}) * SSAA
     cur_x    = {pad_h} * SSAA
     date_str  = '{footer_date}'
     likes_str = '{footer_likes}'
