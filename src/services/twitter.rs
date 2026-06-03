@@ -12,7 +12,7 @@ use crate::models::*;
 const SYNDICATION_URL: &str = "https://cdn.syndication.twimg.com/tweet-result";
 
 pub fn extract_tweet_id(url: &str) -> Result<String, AppError> {
-    let re = Regex::new(r"(?:twitter\.com|x\.com)/[^/]+/status/(\d+)")
+    let re = Regex::new(r"(?:twitter\.com|x\.com)/[^/]+(?:/[^/]+)?/status/(\d+)")
         .expect("regex is valid");
     re.captures(url)
         .and_then(|c| c.get(1))
