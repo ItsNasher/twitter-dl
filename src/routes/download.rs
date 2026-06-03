@@ -46,8 +46,25 @@ pub async fn handler(
 
     let filename = format!("{}_{}.mp4", tweet.user.screen_name, tweet_id);
 
-    // ── Fast path: single video, no overlay → stream from Twitter CDN ─────
+    // ── No caption mode ──────────────────────────────────────────────────
     if !body.render_card {
+        // When quote is requested without caption, download the quoted tweet's video raw
+        if body.include_quote {
+            let (video_bytes, author) = quoted_video(&state.client, &tweet, body.quality.as_deref()).await?
+                .ok_or(AppError::NoVideo)?;
+            let qt_id = tweet.quoted_tweet.as_ref()
+                .and_then(|q| q.id_str.as_deref())
+                .unwrap_or(&tweet_id);
+            let filename = format!("{}_{}.mp4", author, qt_id);
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "video/mp4")
+                .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", filename))
+                .body(Body::from(video_bytes))
+                .map_err(|e| AppError::Internal(e.into()));
+        }
+
+        // Fast path: stream single main/promoted video from CDN
         let url = promoted_video_url(&state.client, &tweet, body.quality.as_deref()).await?;
         let resp = state.client.get(&url).send().await?;
         let stream = resp.bytes_stream().map(|r| r.map_err(|e| anyhow::anyhow!(e)));
