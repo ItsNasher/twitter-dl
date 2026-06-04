@@ -404,8 +404,8 @@ showLoading(loadMsg);
     const author = activeTweetData?.author || currentTweetData.author;
     triggerBlobDownload(blob, getFilenameFromTweet(author, "mp4"));
     incrementStat("totalCount");
-    if (opts.includeQuote) incrementStat("quoteCount");
-    if (opts.includeReply)  incrementStat("replyCount");
+    if (opts.renderCard && opts.includeQuote) incrementStat("quoteCount");
+    if (opts.renderCard && opts.includeReply) incrementStat("replyCount");
   } catch (err) {
     showError(err.message || "download failed. try again.");
   } finally {
