@@ -69,6 +69,11 @@ function setCaptionMode(on) {
     document.getElementById("tweetCard").classList.remove("has-quote-active");
     document.querySelector(".video-meta-area").style.display = "";
   }
+
+  const hasReply = !!currentTweetData?.in_reply_to;
+  const hasQuote = !!currentTweetData?.quoted_tweet;
+  setOptionEnabled("optReplyRow",  "optReply",  "badgeReply",  on && hasReply);
+  setOptionEnabled("optQuotedRow", "optQuoted", "badgeQuoted", on && hasQuote);
 }
 
 function updateReplyContext() {
@@ -467,8 +472,8 @@ function renderResult(data) {
   quotePlayerReady = false;
   setCaptionMode(false);
 
-  setOptionEnabled("optQuotedRow", "optQuoted", "badgeQuoted", !!data.quoted_tweet);
-  setOptionEnabled("optReplyRow",  "optReply",  "badgeReply",  !!data.in_reply_to);
+  setOptionEnabled("optQuotedRow", "optQuoted", "badgeQuoted", false);
+  setOptionEnabled("optReplyRow",  "optReply",  "badgeReply",  false);
 
   if (data.quoted_tweet) {
     document.getElementById("optQuoted").checked = false;
