@@ -876,44 +876,147 @@ from PIL import Image, ImageDraw, ImageFont
 
 SSAA = 2  # supersample factor — render cards at 2× then downscale in ffmpeg
 
-# font
-FONT_PATH = r'{font_path}'
+FONTS_DIR = r'{fonts_dir}'
+FONT_PATH = os.path.join(FONTS_DIR, 'GeistVF.ttf') if os.path.exists(
+    os.path.join(FONTS_DIR, 'GeistVF.ttf')) else r'{font_path}'
+
+_cjk_cache   = {{}}
+_emoji_cache = {{}}
 
 def load_font(size):
     if FONT_PATH and os.path.exists(FONT_PATH):
         try: return ImageFont.truetype(FONT_PATH, size)
         except Exception: pass
+    return ImageFont.load_default()
+
+def load_cjk_font(size):
+    if size in _cjk_cache: return _cjk_cache[size]
     candidates = [
+        os.path.join(FONTS_DIR, 'NotoSansCJK-Regular.ttc'),
+        'C:/Windows/Fonts/msgothic.ttc',
+        'C:/Windows/Fonts/malgun.ttf',
+        'C:/Windows/Fonts/meiryo.ttc',
         '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
         '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
         '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
-        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-        'C:/Windows/Fonts/segoeui.ttf',
-        'C:/Windows/Fonts/arial.ttf',
     ]
     for p in candidates:
         if os.path.exists(p):
-            try: return ImageFont.truetype(p, size)
-            except Exception: pass
-    # fontconfig last resort — finds whatever the system has for CJK
+            try:
+                f = ImageFont.truetype(p, size)
+                _cjk_cache[size] = f
+                return f
+            except: pass
     try:
         import subprocess
-        for lang in ['ja', 'ko', 'zh', '']:
-            query = (':lang=' + lang) if lang else 'NotoSans'
-            r = subprocess.run(
-                ['fc-match', query, '--format=%{{file}}'],
-                capture_output=True, text=True, timeout=3
-            )
+        for lang in ['ja', 'ko', 'zh']:
+            r = subprocess.run([
+                'fc-match', ':lang=' + lang, '--format=%{{file}}'
+            ], capture_output=True, text=True, timeout=3)
             if r.returncode == 0:
                 p = r.stdout.strip()
                 if p and os.path.exists(p):
-                    try: return ImageFont.truetype(p, size)
-                    except Exception: pass
-    except Exception:
-        pass
-    return ImageFont.load_default()
+                    try:
+                        f = ImageFont.truetype(p, size)
+                        _cjk_cache[size] = f
+                        return f
+                    except: pass
+    except: pass
+    return None
+
+def load_emoji_font(size):
+    if size in _emoji_cache: return _emoji_cache[size]
+    candidates = [
+        os.path.join(FONTS_DIR, 'NotoColorEmoji.ttf'),
+        'C:/Windows/Fonts/seguiemj.ttf',
+        '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf',
+        '/usr/share/fonts/noto/NotoColorEmoji.ttf',
+        '/usr/share/fonts/truetype/noto-emoji/NotoColorEmoji.ttf',
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            try:
+                f = ImageFont.truetype(p, size)
+                _emoji_cache[size] = f
+                return f
+            except: pass
+    return None
+
+def char_script(c):
+    cp = ord(c)
+    if (0x1F000 <= cp <= 0x1FFFF or 0x2600 <= cp <= 0x27BF or
+        0x1F900 <= cp <= 0x1F9FF or 0x1FA00 <= cp <= 0x1FAFF or
+        0x2300 <= cp <= 0x23FF  or 0x2700 <= cp <= 0x27BF):
+        return 'emoji'
+    if (0x4E00 <= cp <= 0x9FFF  or 0x3040 <= cp <= 0x30FF or
+        0xAC00 <= cp <= 0xD7A3  or 0x3400 <= cp <= 0x4DBF or
+        0xFF00 <= cp <= 0xFFEF  or 0xF900 <= cp <= 0xFAFF or
+        0x20000 <= cp <= 0x2A6DF):
+        return 'cjk'
+    return 'base'
+
+def pick_font(c, base_font):
+    s = char_script(c)
+    size = getattr(base_font, 'size', 16)
+    if s == 'emoji': return load_emoji_font(size) or base_font
+    if s == 'cjk':   return load_cjk_font(size)   or base_font
+    return base_font
+
+def draw_fb(d, xy, text, font, fill):
+    x, y = float(xy[0]), float(xy[1])
+    size = getattr(font, 'size', 16)
+    i = 0
+    while i < len(text):
+        c = text[i]
+        seq = c
+        j = i + 1
+        while j < len(text):
+            ncp = ord(text[j])
+            if ncp == 0x200D or 0xFE00 <= ncp <= 0xFE0F or 0x1F3FB <= ncp <= 0x1F3FF:
+                seq += text[j]
+                j += 1
+            else:
+                break
+        use = pick_font(c, font)
+        d.text((x, y), seq, font=use, fill=fill)
+        try:
+            bb = use.getbbox(seq)
+            x += bb[2] - bb[0]
+        except:
+            x += size * len(seq)
+        i = j
+
+def text_width_fb(text, font):
+    size = getattr(font, 'size', 16)
+    total = 0
+    i = 0
+    while i < len(text):
+        c = text[i]
+        seq = c
+        j = i + 1
+        while j < len(text):
+            ncp = ord(text[j])
+            if ncp == 0x200D or 0xFE00 <= ncp <= 0xFE0F or 0x1F3FB <= ncp <= 0x1F3FF:
+                seq += text[j]
+                j += 1
+            else:
+                break
+        use = pick_font(c, font)
+        try:
+            bb = use.getbbox(seq)
+            total += bb[2] - bb[0]
+        except:
+            total += size * len(seq)
+        i = j
+    return total
+
+def text_width(font, text):
+    return text_width_fb(text, font)
+
+def draw_multiline(d, text, font, x, y, color, lh):
+    for line in text.split('\n'):
+        draw_fb(d, (x, y), line, font, color)
+        y += lh
 
 # avatar
 def make_avatar(size, src_path, out_path):
@@ -992,19 +1095,6 @@ def make_video_mask(w, h, r, path):
     ImageDraw.Draw(mask).rounded_rectangle([0, 0, w-1, h-1], radius=r, fill=255)
     mask.save(path, 'PNG')
 
-# text helpers
-def text_width(font, text):
-    try:
-        bb = font.getbbox(text)
-        return bb[2] - bb[0]
-    except Exception:
-        return len(text) * font.size
-
-def draw_multiline(d, text, font, x, y, color, line_height):
-    for line in text.split('\n'):
-        d.text((x, y), line, font=font, fill=color)
-        y += line_height
-
 # card top
 def make_card_top(path):
     W, H = {vid_w} * SSAA, {top_bar} * SSAA
@@ -1026,15 +1116,15 @@ def make_card_top(path):
 
     name_x = ({pad_h} + {ava_size} + {ava_gap}) * SSAA
     name_y = ({pad_top} + ({ava_size} - {name_fs} - {handle_fs} - 2) // 2) * SSAA
-    d.text((name_x, name_y), '{display_name}', font=font_name, fill=(255,255,255,255))
+    draw_fb(d, (name_x, name_y), '{display_name}', font_name, (255,255,255,255))
 
-    name_w  = text_width(font_name, '{display_name}')
+    name_w  = text_width_fb('{display_name}', font_name)
     check_x = name_x + name_w + 3 * SSAA
     check_y = name_y + ({name_fs} * SSAA - {check_sz} * SSAA) // 2 + round({name_fs} * SSAA * 0.12)
     draw_checkmark(img, check_x, check_y, {check_sz} * SSAA)
 
     handle_y = name_y + {name_fs} * SSAA + 3 * SSAA
-    d.text((name_x, handle_y), '@{author}', font=font_handle, fill=(113,118,123,255))
+    draw_fb(d, (name_x, handle_y), '@{author}', font_handle, (113,118,123,255))
 
     xlogo_x = W - ({pad_h} + {xlogo_sz}) * SSAA
     xlogo_y = ({pad_top} + ({ava_size} - {xlogo_sz}) // 2) * SSAA
@@ -1093,6 +1183,12 @@ if {vid_dw} > 0 and {display_h} > 0:
 print('ok')
 "#,
         font_path    = font_path,
+        fonts_dir    = std::env::current_dir()
+            .unwrap_or_default()
+            .join("fonts")
+            .display()
+            .to_string()
+            .replace('\\', "/"),
         vid_w        = vid_w,
         top_bar      = top_bar,
         bot_bar      = bot_bar,
@@ -1190,42 +1286,147 @@ from PIL import Image, ImageDraw, ImageFont
 
 SSAA = 2
 
-FONT_PATH = r'{font_path}'
+FONTS_DIR = r'{fonts_dir}'
+FONT_PATH = os.path.join(FONTS_DIR, 'GeistVF.ttf') if os.path.exists(
+    os.path.join(FONTS_DIR, 'GeistVF.ttf')) else r'{font_path}'
+
+_cjk_cache   = {{}}
+_emoji_cache = {{}}
 
 def load_font(size):
     if FONT_PATH and os.path.exists(FONT_PATH):
         try: return ImageFont.truetype(FONT_PATH, size)
         except Exception: pass
+    return ImageFont.load_default()
+
+def load_cjk_font(size):
+    if size in _cjk_cache: return _cjk_cache[size]
     candidates = [
+        os.path.join(FONTS_DIR, 'NotoSansCJK-Regular.ttc'),
+        'C:/Windows/Fonts/msgothic.ttc',
+        'C:/Windows/Fonts/malgun.ttf',
+        'C:/Windows/Fonts/meiryo.ttc',
         '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
         '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
         '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
-        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-        'C:/Windows/Fonts/segoeui.ttf',
-        'C:/Windows/Fonts/arial.ttf',
     ]
     for p in candidates:
         if os.path.exists(p):
-            try: return ImageFont.truetype(p, size)
-            except Exception: pass
+            try:
+                f = ImageFont.truetype(p, size)
+                _cjk_cache[size] = f
+                return f
+            except: pass
     try:
         import subprocess
-        for lang in ['ja', 'ko', 'zh', '']:
-            query = (':lang=' + lang) if lang else 'NotoSans'
-            r = subprocess.run(
-                ['fc-match', query, '--format=%{{file}}'],
-                capture_output=True, text=True, timeout=3
-            )
+        for lang in ['ja', 'ko', 'zh']:
+            r = subprocess.run([
+                'fc-match', ':lang=' + lang, '--format=%{{file}}'
+            ], capture_output=True, text=True, timeout=3)
             if r.returncode == 0:
                 p = r.stdout.strip()
                 if p and os.path.exists(p):
-                    try: return ImageFont.truetype(p, size)
-                    except Exception: pass
-    except Exception:
-        pass
-    return ImageFont.load_default()
+                    try:
+                        f = ImageFont.truetype(p, size)
+                        _cjk_cache[size] = f
+                        return f
+                    except: pass
+    except: pass
+    return None
+
+def load_emoji_font(size):
+    if size in _emoji_cache: return _emoji_cache[size]
+    candidates = [
+        os.path.join(FONTS_DIR, 'NotoColorEmoji.ttf'),
+        'C:/Windows/Fonts/seguiemj.ttf',
+        '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf',
+        '/usr/share/fonts/noto/NotoColorEmoji.ttf',
+        '/usr/share/fonts/truetype/noto-emoji/NotoColorEmoji.ttf',
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            try:
+                f = ImageFont.truetype(p, size)
+                _emoji_cache[size] = f
+                return f
+            except: pass
+    return None
+
+def char_script(c):
+    cp = ord(c)
+    if (0x1F000 <= cp <= 0x1FFFF or 0x2600 <= cp <= 0x27BF or
+        0x1F900 <= cp <= 0x1F9FF or 0x1FA00 <= cp <= 0x1FAFF or
+        0x2300 <= cp <= 0x23FF  or 0x2700 <= cp <= 0x27BF):
+        return 'emoji'
+    if (0x4E00 <= cp <= 0x9FFF  or 0x3040 <= cp <= 0x30FF or
+        0xAC00 <= cp <= 0xD7A3  or 0x3400 <= cp <= 0x4DBF or
+        0xFF00 <= cp <= 0xFFEF  or 0xF900 <= cp <= 0xFAFF or
+        0x20000 <= cp <= 0x2A6DF):
+        return 'cjk'
+    return 'base'
+
+def pick_font(c, base_font):
+    s = char_script(c)
+    size = getattr(base_font, 'size', 16)
+    if s == 'emoji': return load_emoji_font(size) or base_font
+    if s == 'cjk':   return load_cjk_font(size)   or base_font
+    return base_font
+
+def draw_fb(d, xy, text, font, fill):
+    x, y = float(xy[0]), float(xy[1])
+    size = getattr(font, 'size', 16)
+    i = 0
+    while i < len(text):
+        c = text[i]
+        seq = c
+        j = i + 1
+        while j < len(text):
+            ncp = ord(text[j])
+            if ncp == 0x200D or 0xFE00 <= ncp <= 0xFE0F or 0x1F3FB <= ncp <= 0x1F3FF:
+                seq += text[j]
+                j += 1
+            else:
+                break
+        use = pick_font(c, font)
+        d.text((x, y), seq, font=use, fill=fill)
+        try:
+            bb = use.getbbox(seq)
+            x += bb[2] - bb[0]
+        except:
+            x += size * len(seq)
+        i = j
+
+def text_width_fb(text, font):
+    size = getattr(font, 'size', 16)
+    total = 0
+    i = 0
+    while i < len(text):
+        c = text[i]
+        seq = c
+        j = i + 1
+        while j < len(text):
+            ncp = ord(text[j])
+            if ncp == 0x200D or 0xFE00 <= ncp <= 0xFE0F or 0x1F3FB <= ncp <= 0x1F3FF:
+                seq += text[j]
+                j += 1
+            else:
+                break
+        use = pick_font(c, font)
+        try:
+            bb = use.getbbox(seq)
+            total += bb[2] - bb[0]
+        except:
+            total += size * len(seq)
+        i = j
+    return total
+
+def text_width(font, text):
+    return text_width_fb(text, font)
+
+def draw_multiline(d, text, font, x, y, color, lh):
+    for line in text.split('\n'):
+        draw_fb(d, (x, y), line, font, color)
+        y += lh
 
 def make_avatar(size, src_path, out_path):
     if src_path is not None and os.path.exists(src_path):
@@ -1290,18 +1491,6 @@ def draw_heart(canvas, x, y, size):
     lw = max(1, round(size / 11))
     d.line(poly + [poly[0]], fill=color, width=lw)
 
-def text_width(font, text):
-    try:
-        bb = font.getbbox(text)
-        return bb[2] - bb[0]
-    except Exception:
-        return len(text) * font.size
-
-def draw_multiline(d, text, font, x, y, color, line_height):
-    for line in text.split('\n'):
-        d.text((x, y), line, font=font, fill=color)
-        y += line_height
-
 def make_reply_card(path):
     W, H = {vid_w} * SSAA, {card_h} * SSAA
     img = Image.new('RGBA', (W, H), (0, 0, 0, 255))
@@ -1350,15 +1539,15 @@ def make_reply_card(path):
 
     name_x = ({pad_h} + {ava_size} + {ava_gap}) * SSAA
     name_y = off + ({pad_top} + ({ava_size} - {name_fs} - {handle_fs} - 2) // 2) * SSAA
-    d.text((name_x, name_y), '{display_name}', font=font_name, fill=(255,255,255,255))
+    draw_fb(d, (name_x, name_y), '{display_name}', font_name, (255,255,255,255))
 
-    name_w  = text_width(font_name, '{display_name}')
+    name_w  = text_width_fb('{display_name}', font_name)
     check_x = name_x + name_w + 3 * SSAA
     check_y = name_y + ({name_fs} * SSAA - {check_sz} * SSAA) // 2 + round({name_fs} * SSAA * 0.12)
     draw_checkmark(img, check_x, check_y, {check_sz} * SSAA)
 
     handle_y = name_y + {name_fs} * SSAA + 3 * SSAA
-    d.text((name_x, handle_y), '@{author}', font=font_handle, fill=(113,118,123,255))
+    draw_fb(d, (name_x, handle_y), '@{author}', font_handle, (113,118,123,255))
 
     body_y = off + {header_h} * SSAA
     lh = ({body_fs} + {body_lh}) * SSAA
@@ -1374,6 +1563,12 @@ make_reply_card(r'{card_out}')
 print('ok')
 "#,
         font_path    = font_path,
+        fonts_dir    = std::env::current_dir()
+            .unwrap_or_default()
+            .join("fonts")
+            .display()
+            .to_string()
+            .replace('\\', "/"),
         vid_w        = vid_w,
         card_h       = card_h,
         pad_h        = pad_h,
@@ -1468,27 +1663,148 @@ import os, math
 from PIL import Image, ImageDraw, ImageFont
 
 SSAA = 2
-FONT_PATH = r'{font_path}'
+
+FONTS_DIR = r'{fonts_dir}'
+FONT_PATH = os.path.join(FONTS_DIR, 'GeistVF.ttf') if os.path.exists(
+    os.path.join(FONTS_DIR, 'GeistVF.ttf')) else r'{font_path}'
+
+_cjk_cache   = {{}}
+_emoji_cache = {{}}
 
 def load_font(size):
     if FONT_PATH and os.path.exists(FONT_PATH):
         try: return ImageFont.truetype(FONT_PATH, size)
         except Exception: pass
+    return ImageFont.load_default()
+
+def load_cjk_font(size):
+    if size in _cjk_cache: return _cjk_cache[size]
     candidates = [
+        os.path.join(FONTS_DIR, 'NotoSansCJK-Regular.ttc'),
+        'C:/Windows/Fonts/msgothic.ttc',
+        'C:/Windows/Fonts/malgun.ttf',
+        'C:/Windows/Fonts/meiryo.ttc',
         '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
         '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
         '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
-        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-        'C:/Windows/Fonts/segoeui.ttf',
-        'C:/Windows/Fonts/arial.ttf',
     ]
     for p in candidates:
         if os.path.exists(p):
-            try: return ImageFont.truetype(p, size)
-            except Exception: pass
-    return ImageFont.load_default()
+            try:
+                f = ImageFont.truetype(p, size)
+                _cjk_cache[size] = f
+                return f
+            except: pass
+    try:
+        import subprocess
+        for lang in ['ja', 'ko', 'zh']:
+            r = subprocess.run([
+                'fc-match', ':lang=' + lang, '--format=%{{file}}'
+            ], capture_output=True, text=True, timeout=3)
+            if r.returncode == 0:
+                p = r.stdout.strip()
+                if p and os.path.exists(p):
+                    try:
+                        f = ImageFont.truetype(p, size)
+                        _cjk_cache[size] = f
+                        return f
+                    except: pass
+    except: pass
+    return None
+
+def load_emoji_font(size):
+    if size in _emoji_cache: return _emoji_cache[size]
+    candidates = [
+        os.path.join(FONTS_DIR, 'NotoColorEmoji.ttf'),
+        'C:/Windows/Fonts/seguiemj.ttf',
+        '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf',
+        '/usr/share/fonts/noto/NotoColorEmoji.ttf',
+        '/usr/share/fonts/truetype/noto-emoji/NotoColorEmoji.ttf',
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            try:
+                f = ImageFont.truetype(p, size)
+                _emoji_cache[size] = f
+                return f
+            except: pass
+    return None
+
+def char_script(c):
+    cp = ord(c)
+    if (0x1F000 <= cp <= 0x1FFFF or 0x2600 <= cp <= 0x27BF or
+        0x1F900 <= cp <= 0x1F9FF or 0x1FA00 <= cp <= 0x1FAFF or
+        0x2300 <= cp <= 0x23FF  or 0x2700 <= cp <= 0x27BF):
+        return 'emoji'
+    if (0x4E00 <= cp <= 0x9FFF  or 0x3040 <= cp <= 0x30FF or
+        0xAC00 <= cp <= 0xD7A3  or 0x3400 <= cp <= 0x4DBF or
+        0xFF00 <= cp <= 0xFFEF  or 0xF900 <= cp <= 0xFAFF or
+        0x20000 <= cp <= 0x2A6DF):
+        return 'cjk'
+    return 'base'
+
+def pick_font(c, base_font):
+    s = char_script(c)
+    size = getattr(base_font, 'size', 16)
+    if s == 'emoji': return load_emoji_font(size) or base_font
+    if s == 'cjk':   return load_cjk_font(size)   or base_font
+    return base_font
+
+def draw_fb(d, xy, text, font, fill):
+    x, y = float(xy[0]), float(xy[1])
+    size = getattr(font, 'size', 16)
+    i = 0
+    while i < len(text):
+        c = text[i]
+        seq = c
+        j = i + 1
+        while j < len(text):
+            ncp = ord(text[j])
+            if ncp == 0x200D or 0xFE00 <= ncp <= 0xFE0F or 0x1F3FB <= ncp <= 0x1F3FF:
+                seq += text[j]
+                j += 1
+            else:
+                break
+        use = pick_font(c, font)
+        d.text((x, y), seq, font=use, fill=fill)
+        try:
+            bb = use.getbbox(seq)
+            x += bb[2] - bb[0]
+        except:
+            x += size * len(seq)
+        i = j
+
+def text_width_fb(text, font):
+    size = getattr(font, 'size', 16)
+    total = 0
+    i = 0
+    while i < len(text):
+        c = text[i]
+        seq = c
+        j = i + 1
+        while j < len(text):
+            ncp = ord(text[j])
+            if ncp == 0x200D or 0xFE00 <= ncp <= 0xFE0F or 0x1F3FB <= ncp <= 0x1F3FF:
+                seq += text[j]
+                j += 1
+            else:
+                break
+        use = pick_font(c, font)
+        try:
+            bb = use.getbbox(seq)
+            total += bb[2] - bb[0]
+        except:
+            total += size * len(seq)
+        i = j
+    return total
+
+def text_width(font, text):
+    return text_width_fb(text, font)
+
+def draw_multiline(d, text, font, x, y, color, lh):
+    for line in text.split('\n'):
+        draw_fb(d, (x, y), line, font, color)
+        y += lh
 
 def make_avatar(size, src_path, out_path):
     if src_path is not None and os.path.exists(src_path):
@@ -1503,18 +1819,6 @@ def make_avatar(size, src_path, out_path):
     out = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     out.paste(base, mask=mask)
     out.save(out_path, 'PNG')
-
-def text_width(font, text):
-    try:
-        bb = font.getbbox(text)
-        return bb[2] - bb[0]
-    except Exception:
-        return len(text) * font.size
-
-def draw_multiline(d, text, font, x, y, color, lh):
-    for line in text.split('\n'):
-        d.text((x, y), line, font=font, fill=color)
-        y += lh
 
 def draw_heart(canvas, x, y, size):
     d = ImageDraw.Draw(canvas)
@@ -1575,8 +1879,8 @@ def make_quote_bot(path):
     name_row_y = ava_y + ({q_ava_sz} * SSAA - {q_name_fs} * SSAA) // 2
     cur_x = ava_x + {q_ava_sz} * SSAA + {q_ava_gap} * SSAA
 
-    d.text((cur_x, name_row_y), '{q_display_name}', font=font_q_name, fill=(231, 233, 234, 255))
-    cur_x += text_width(font_q_name, '{q_display_name}')
+    draw_fb(d, (cur_x, name_row_y), '{q_display_name}', font_q_name, (231, 233, 234, 255))
+    cur_x += text_width_fb('{q_display_name}', font_q_name)
 
     handle_part = ' @{q_author}'
     d.text((cur_x, name_row_y), handle_part, font=font_q_handle, fill=(113, 118, 123, 255))
@@ -1624,8 +1928,14 @@ make_quote_bot(r'{card_out}')
 make_inner_mask({q_vid_w_inner}, {q_vid_display_h}, {q_vid_corner_inner}, r'{inner_mask_out}')
 print('ok')
 "#,
-        font_path          = font_path,
-        vid_w              = vid_w,
+        font_path    = font_path,
+        fonts_dir    = std::env::current_dir()
+            .unwrap_or_default()
+            .join("fonts")
+            .display()
+            .to_string()
+            .replace('\\', "/"),
+        vid_w        = vid_w,
         bot_bar            = bot_bar,
         pad_h              = pad_h,
         q_pad_h            = q_pad_h,
@@ -1771,7 +2081,7 @@ fn format_count(n: u64) -> String {
 
 fn find_font() -> Option<PathBuf> {
     let candidates = [
-        "fonts/Geist-Regular.ttf",
+        "fonts/GeistVF.ttf",
         "fonts/Geist-Regular.otf",
         "fonts/Geist.ttf",
         "C:/Windows/Fonts/segoeui.ttf",
