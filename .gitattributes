@@ -1,0 +1,31 @@
+* text=auto eol=lf
+
+# Font binaries — don't diff or line-convert
+*.ttf  binary
+*.otf  binary
+*.ttc  binary
+
+# Rust
+*.rs  text diff=rust
+Cargo.lock text diff=rust
+
+# Python overlay script
+*.py text diff=python
+
+# Frontend
+*.html text diff=html
+*.css  text diff=css
+*.js   text diff=javascript
+
+# Config
+*.toml  text
+*.txt   text
+*.md    text diff=markdown
+
+# Environment
+.env         text
+.env.example text
+
+# Railway
+apt.txt       text
+railway.toml  text
