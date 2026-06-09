@@ -321,8 +321,11 @@ function setOptionsLocked(locked) {
       row.classList.add("option-row-disabled");
       check.disabled = true;
     } else if (available) {
-      row.classList.remove("option-row-disabled");
-      check.disabled = false;
+      const captionsOn = document.getElementById("optCaptions").checked;
+      if (checkId === "optCaptions" || captionsOn) {
+        row.classList.remove("option-row-disabled");
+        check.disabled = false;
+      }
     }
   });
 }
