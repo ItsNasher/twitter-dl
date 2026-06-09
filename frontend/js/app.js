@@ -495,7 +495,6 @@ function setOptionEnabled(rowId, checkId, badgeId, available) {
   if (available) {
     row.classList.remove("option-row-disabled");
     check.disabled = false;
-    check.checked  = true;
     badge.style.display = "inline-flex";
   } else {
     row.classList.add("option-row-disabled");
