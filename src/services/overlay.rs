@@ -924,23 +924,29 @@ def load_cjk_font(size):
     except: pass
     return None
 
-def load_emoji_font(size):
-    if size in _emoji_cache: return _emoji_cache[size]
-    candidates = [
-        os.path.join(FONTS_DIR, 'NotoColorEmoji.ttf'),
-        'C:/Windows/Fonts/seguiemj.ttf',
-        '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf',
-        '/usr/share/fonts/noto/NotoColorEmoji.ttf',
-        '/usr/share/fonts/truetype/noto-emoji/NotoColorEmoji.ttf',
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            try:
-                f = ImageFont.truetype(p, size)
-                _emoji_cache[size] = f
-                return f
-            except: pass
-    return None
+TWEMOJI_DIR = os.path.join(FONTS_DIR, 'twemoji')
+
+def get_emoji_png(seq):
+    codepoints = '-'.join(f'{{ord(c):x}}' for c in seq if ord(c) != 0xFE0F)
+    path = os.path.join(TWEMOJI_DIR, f'{{codepoints}}.png')
+    if os.path.exists(path):
+        return path
+    first = f'{{ord(seq[0]):x}}'
+    path = os.path.join(TWEMOJI_DIR, f'{{first}}.png')
+    return path if os.path.exists(path) else None
+
+def draw_emoji(canvas, x, y, seq, size):
+    path = get_emoji_png(seq)
+    if not path:
+        return size
+    try:
+        em = Image.open(path).convert('RGBA')
+        em = em.resize((size, size), Image.LANCZOS)
+        baseline_offset = round(size * 0.1)
+        canvas.paste(em, (int(x), int(y) - baseline_offset), em)
+        return size
+    except Exception:
+        return size
 
 def char_script(c):
     cp = ord(c)
@@ -955,16 +961,10 @@ def char_script(c):
         return 'cjk'
     return 'base'
 
-def pick_font(c, base_font):
-    s = char_script(c)
-    size = getattr(base_font, 'size', 16)
-    if s == 'emoji': return load_emoji_font(size) or base_font
-    if s == 'cjk':   return load_cjk_font(size)   or base_font
-    return base_font
-
 def draw_fb(d, xy, text, font, fill):
     x, y = float(xy[0]), float(xy[1])
     size = getattr(font, 'size', 16)
+    emoji_size = round(size * 1.1)
     i = 0
     while i < len(text):
         c = text[i]
@@ -977,17 +977,30 @@ def draw_fb(d, xy, text, font, fill):
                 j += 1
             else:
                 break
-        use = pick_font(c, font)
-        d.text((x, y), seq, font=use, fill=fill)
-        try:
-            bb = use.getbbox(seq)
-            x += bb[2] - bb[0]
-        except:
-            x += size * len(seq)
+        script = char_script(c)
+        if script == 'emoji':
+            advance = draw_emoji(d._image, x, y, seq, emoji_size)
+            x += advance + 2
+        elif script == 'cjk':
+            use = load_cjk_font(size) or font
+            d.text((x, y), seq, font=use, fill=fill)
+            try:
+                bb = use.getbbox(seq)
+                x += bb[2] - bb[0]
+            except:
+                x += size
+        else:
+            d.text((x, y), seq, font=font, fill=fill)
+            try:
+                bb = font.getbbox(seq)
+                x += bb[2] - bb[0]
+            except:
+                x += size * len(seq)
         i = j
 
 def text_width_fb(text, font):
     size = getattr(font, 'size', 16)
+    emoji_size = round(size * 1.1)
     total = 0
     i = 0
     while i < len(text):
@@ -1001,12 +1014,21 @@ def text_width_fb(text, font):
                 j += 1
             else:
                 break
-        use = pick_font(c, font)
-        try:
-            bb = use.getbbox(seq)
-            total += bb[2] - bb[0]
-        except:
-            total += size * len(seq)
+        if char_script(c) == 'emoji':
+            total += emoji_size + 2
+        elif char_script(c) == 'cjk':
+            use = load_cjk_font(size) or font
+            try:
+                bb = use.getbbox(seq)
+                total += bb[2] - bb[0]
+            except:
+                total += size
+        else:
+            try:
+                bb = font.getbbox(seq)
+                total += bb[2] - bb[0]
+            except:
+                total += size * len(seq)
         i = j
     return total
 
@@ -1334,23 +1356,29 @@ def load_cjk_font(size):
     except: pass
     return None
 
-def load_emoji_font(size):
-    if size in _emoji_cache: return _emoji_cache[size]
-    candidates = [
-        os.path.join(FONTS_DIR, 'NotoColorEmoji.ttf'),
-        'C:/Windows/Fonts/seguiemj.ttf',
-        '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf',
-        '/usr/share/fonts/noto/NotoColorEmoji.ttf',
-        '/usr/share/fonts/truetype/noto-emoji/NotoColorEmoji.ttf',
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            try:
-                f = ImageFont.truetype(p, size)
-                _emoji_cache[size] = f
-                return f
-            except: pass
-    return None
+TWEMOJI_DIR = os.path.join(FONTS_DIR, 'twemoji')
+
+def get_emoji_png(seq):
+    codepoints = '-'.join(f'{{ord(c):x}}' for c in seq if ord(c) != 0xFE0F)
+    path = os.path.join(TWEMOJI_DIR, f'{{codepoints}}.png')
+    if os.path.exists(path):
+        return path
+    first = f'{{ord(seq[0]):x}}'
+    path = os.path.join(TWEMOJI_DIR, f'{{first}}.png')
+    return path if os.path.exists(path) else None
+
+def draw_emoji(canvas, x, y, seq, size):
+    path = get_emoji_png(seq)
+    if not path:
+        return size
+    try:
+        em = Image.open(path).convert('RGBA')
+        em = em.resize((size, size), Image.LANCZOS)
+        baseline_offset = round(size * 0.1)
+        canvas.paste(em, (int(x), int(y) - baseline_offset), em)
+        return size
+    except Exception:
+        return size
 
 def char_script(c):
     cp = ord(c)
@@ -1365,16 +1393,10 @@ def char_script(c):
         return 'cjk'
     return 'base'
 
-def pick_font(c, base_font):
-    s = char_script(c)
-    size = getattr(base_font, 'size', 16)
-    if s == 'emoji': return load_emoji_font(size) or base_font
-    if s == 'cjk':   return load_cjk_font(size)   or base_font
-    return base_font
-
 def draw_fb(d, xy, text, font, fill):
     x, y = float(xy[0]), float(xy[1])
     size = getattr(font, 'size', 16)
+    emoji_size = round(size * 1.1)
     i = 0
     while i < len(text):
         c = text[i]
@@ -1387,17 +1409,30 @@ def draw_fb(d, xy, text, font, fill):
                 j += 1
             else:
                 break
-        use = pick_font(c, font)
-        d.text((x, y), seq, font=use, fill=fill)
-        try:
-            bb = use.getbbox(seq)
-            x += bb[2] - bb[0]
-        except:
-            x += size * len(seq)
+        script = char_script(c)
+        if script == 'emoji':
+            advance = draw_emoji(d._image, x, y, seq, emoji_size)
+            x += advance + 2
+        elif script == 'cjk':
+            use = load_cjk_font(size) or font
+            d.text((x, y), seq, font=use, fill=fill)
+            try:
+                bb = use.getbbox(seq)
+                x += bb[2] - bb[0]
+            except:
+                x += size
+        else:
+            d.text((x, y), seq, font=font, fill=fill)
+            try:
+                bb = font.getbbox(seq)
+                x += bb[2] - bb[0]
+            except:
+                x += size * len(seq)
         i = j
 
 def text_width_fb(text, font):
     size = getattr(font, 'size', 16)
+    emoji_size = round(size * 1.1)
     total = 0
     i = 0
     while i < len(text):
@@ -1411,12 +1446,21 @@ def text_width_fb(text, font):
                 j += 1
             else:
                 break
-        use = pick_font(c, font)
-        try:
-            bb = use.getbbox(seq)
-            total += bb[2] - bb[0]
-        except:
-            total += size * len(seq)
+        if char_script(c) == 'emoji':
+            total += emoji_size + 2
+        elif char_script(c) == 'cjk':
+            use = load_cjk_font(size) or font
+            try:
+                bb = use.getbbox(seq)
+                total += bb[2] - bb[0]
+            except:
+                total += size
+        else:
+            try:
+                bb = font.getbbox(seq)
+                total += bb[2] - bb[0]
+            except:
+                total += size * len(seq)
         i = j
     return total
 
@@ -1712,23 +1756,29 @@ def load_cjk_font(size):
     except: pass
     return None
 
-def load_emoji_font(size):
-    if size in _emoji_cache: return _emoji_cache[size]
-    candidates = [
-        os.path.join(FONTS_DIR, 'NotoColorEmoji.ttf'),
-        'C:/Windows/Fonts/seguiemj.ttf',
-        '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf',
-        '/usr/share/fonts/noto/NotoColorEmoji.ttf',
-        '/usr/share/fonts/truetype/noto-emoji/NotoColorEmoji.ttf',
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            try:
-                f = ImageFont.truetype(p, size)
-                _emoji_cache[size] = f
-                return f
-            except: pass
-    return None
+TWEMOJI_DIR = os.path.join(FONTS_DIR, 'twemoji')
+
+def get_emoji_png(seq):
+    codepoints = '-'.join(f'{{ord(c):x}}' for c in seq if ord(c) != 0xFE0F)
+    path = os.path.join(TWEMOJI_DIR, f'{{codepoints}}.png')
+    if os.path.exists(path):
+        return path
+    first = f'{{ord(seq[0]):x}}'
+    path = os.path.join(TWEMOJI_DIR, f'{{first}}.png')
+    return path if os.path.exists(path) else None
+
+def draw_emoji(canvas, x, y, seq, size):
+    path = get_emoji_png(seq)
+    if not path:
+        return size
+    try:
+        em = Image.open(path).convert('RGBA')
+        em = em.resize((size, size), Image.LANCZOS)
+        baseline_offset = round(size * 0.1)
+        canvas.paste(em, (int(x), int(y) - baseline_offset), em)
+        return size
+    except Exception:
+        return size
 
 def char_script(c):
     cp = ord(c)
@@ -1743,16 +1793,10 @@ def char_script(c):
         return 'cjk'
     return 'base'
 
-def pick_font(c, base_font):
-    s = char_script(c)
-    size = getattr(base_font, 'size', 16)
-    if s == 'emoji': return load_emoji_font(size) or base_font
-    if s == 'cjk':   return load_cjk_font(size)   or base_font
-    return base_font
-
 def draw_fb(d, xy, text, font, fill):
     x, y = float(xy[0]), float(xy[1])
     size = getattr(font, 'size', 16)
+    emoji_size = round(size * 1.1)
     i = 0
     while i < len(text):
         c = text[i]
@@ -1765,17 +1809,30 @@ def draw_fb(d, xy, text, font, fill):
                 j += 1
             else:
                 break
-        use = pick_font(c, font)
-        d.text((x, y), seq, font=use, fill=fill)
-        try:
-            bb = use.getbbox(seq)
-            x += bb[2] - bb[0]
-        except:
-            x += size * len(seq)
+        script = char_script(c)
+        if script == 'emoji':
+            advance = draw_emoji(d._image, x, y, seq, emoji_size)
+            x += advance + 2
+        elif script == 'cjk':
+            use = load_cjk_font(size) or font
+            d.text((x, y), seq, font=use, fill=fill)
+            try:
+                bb = use.getbbox(seq)
+                x += bb[2] - bb[0]
+            except:
+                x += size
+        else:
+            d.text((x, y), seq, font=font, fill=fill)
+            try:
+                bb = font.getbbox(seq)
+                x += bb[2] - bb[0]
+            except:
+                x += size * len(seq)
         i = j
 
 def text_width_fb(text, font):
     size = getattr(font, 'size', 16)
+    emoji_size = round(size * 1.1)
     total = 0
     i = 0
     while i < len(text):
@@ -1789,12 +1846,21 @@ def text_width_fb(text, font):
                 j += 1
             else:
                 break
-        use = pick_font(c, font)
-        try:
-            bb = use.getbbox(seq)
-            total += bb[2] - bb[0]
-        except:
-            total += size * len(seq)
+        if char_script(c) == 'emoji':
+            total += emoji_size + 2
+        elif char_script(c) == 'cjk':
+            use = load_cjk_font(size) or font
+            try:
+                bb = use.getbbox(seq)
+                total += bb[2] - bb[0]
+            except:
+                total += size
+        else:
+            try:
+                bb = font.getbbox(seq)
+                total += bb[2] - bb[0]
+            except:
+                total += size * len(seq)
         i = j
     return total
 
